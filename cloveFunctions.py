@@ -20,6 +20,8 @@ from scipy.stats import probplot
 import statsmodels.api as sm
 import statsmodels.stats.power as smp
 import pylab
+from scipy.spatial.distance import pdist, squareform
+from scipy.cluster.hierarchy import linkage, dendrogram
 matplotlib.rcParams['figure.figsize'] = (20.0, 10.0)
 
 
@@ -507,6 +509,51 @@ def vulnerability_vector_count(exp, cnv, hits):
             
     pat_essential.replace(np.nan, 0, inplace=True)
     return pat_essential.astype(np.int32)
+
+
+def hire_clust(df, fig_fh=False):
+    """
+    performs hirearchical clustering on columns in df, plots dendro and heatmap
+    
+    :param df: pandas dataframe of floats with column headers to cluster on
+    :param fig_fh: str, filehandle of figure jpg if saving, defaults to False
+    """
+    data_dfT = df.T
+    data_dist = pdist(data_dfT) # computing the distance
+    data_link = linkage(data_dist) # computing the linkage
+    
+    # Compute and plot first dendrogram.
+    fig = plt.figure(figsize=(8,8))
+    # x ywidth height
+    ax1 = fig.add_axes([0.05,0.1,0.2,0.6])
+    Y = linkage(data_dist, method='single')
+    Z1 = dendrogram(Y, orientation='right',labels=data_dfT.index) # adding/removing the axes, data.dtype.names
+    ax1.set_xticks([])
+
+    # Compute and plot second dendrogram.
+    ax2 = fig.add_axes([0.3,0.71,0.6,0.2])
+    Z2 = dendrogram(Y)
+    ax2.set_xticks([])
+    ax2.set_yticks([])
+
+    #Compute and plot the heatmap
+    axmatrix = fig.add_axes([0.3,0.1,0.6,0.6])
+    idx1 = Z1['leaves']
+    idx2 = Z2['leaves']
+    D = squareform(data_dist)
+    D = D[idx1,:]
+    D = D[:,idx2]
+    im = axmatrix.matshow(D, aspect='auto', origin='lower', cmap=plt.cm.YlGnBu)
+    axmatrix.set_xticks([])
+    axmatrix.set_yticks([])
+
+    # Plot colorbar.
+    axcolor = fig.add_axes([0.91,0.1,0.02,0.6])
+    plt.colorbar(im, cax=axcolor)
+    if fig_fh:
+        plt.savefig(fig_fh)
+    else:
+        plt.show()
 
 
 
