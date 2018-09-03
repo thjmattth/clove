@@ -511,6 +511,45 @@ def vulnerability_vector_count(exp, cnv, hits):
     return pat_essential.astype(np.int32)
 
 
+def correlate_df_cols(df_1, df_2, comb=False):
+    """
+    finds pearson coefficient between columns of two pandas dataframes
+    
+    :param df_1: pandas dataframe
+    :param df_2: pandas dataframe
+    :param comb: bool, changes how/which column comparisons are made:
+                    True: correlation between all combinations of cols
+                    False: correlation between matching column headers (default)
+    
+    returns pandas dataframe of correlations
+    """
+    
+    idx_1, idx_2 = df_1.index, df_2.index
+    labels = idx_1.intersection(idx_2)
+    df_1, df_2 = df_1.loc[labels], df_2.loc[labels]
+    cldeg, dep_breast = df_1, df_2
+    
+    if comb:
+        cldeg_depBreast_corr = [['sample','cell','pear_coeff','p_val']]
+        completed = []
+        for pair in itertools.product(cldeg.columns, dep_breast.columns):
+            if (pair[0] != pair[1]) & (pair[::-1] not in completed):
+                corr = pearsonr(cldeg[pair[0]], dep_breast[pair[1]])
+                cldeg_depBreast_corr.append([pair[0], pair[1], corr[0], corr[1]])
+                completed.append(pair)
+    else:
+        cldeg_depBreast_corr = [['cell','pear_coeff','p_val']]
+        for cell in cldeg.columns:
+            if cell in dep_breast.columns:
+                corr = pearsonr(cldeg[cell], dep_breast[cell])
+                cldeg_depBreast_corr.append([cell, corr[0], corr[1]])
+
+    cols = cldeg_depBreast_corr.pop(0)
+    df_corr = pd.DataFrame(cldeg_depBreast_corr)
+    df_corr.columns = cols
+    return df_corr
+
+
 def hire_clust(df, fig_fh=False):
     """
     performs hirearchical clustering on columns in df, plots dendro and heatmap
