@@ -600,6 +600,133 @@ def hire_clust(df, fig_fh=False):
 
 # randomly select 10000 cnv and exp genes to form 10000 pairs
 
+def stack_process(fh, score='pearson', diff='same_group?'):
+    '''
+    processes df for graphing
+    
+    :param: fh: path/file of pandas datatframe of congruent or ttest scores 
+                df columns = ['level_0', 'level_1', 'Score', 'same_group', 'tissue']
+    '''
+    # read in results df with tissue groupings and stuff
+    cong = pd.read_pickle(fh)
+    cong.columns = ['mrna','cnv',score, diff, 'tissue']
+    cong.reset_index(inplace=True, drop=True)
+    cong['tissue'].replace(to_replace='haematopoietic_and_lymphoid_tissue', value='haem_and_lymph', inplace=True)
+    cong['tissue'].replace(to_replace='central_nervous_system', value='c_n_s', inplace=True)
+    cong['tissue'].replace(to_replace='upper_aerodigestive_tract', value='aerodigestive', inplace=True)
+
+
+    # filter col entries not found in membership dict keys, add module columns
+    cong['keep'] = (cong['mrna'].isin(memberships.keys())) & (cong['cnv'].isin(memberships.keys()))
+    cong = cong[cong['keep'] == True]
+    del cong['keep']
+
+    cong['mrna_mods'] = cong['mrna'].map(memberships)
+    cong['cnv_mods'] = cong['cnv'].map(memberships)
+    cong['all_mods'] = cong['mrna_mods'] + cong['cnv_mods']
+    
+    return cong
+
+
+def get_common(cong):
+    '''
+    finds common gene module between two genes in stacked congruent file
+    
+    :param: cong: pandas datatframe of congruent scores
+    '''
+    def check_row (row_mods, col_mods):
+        return set(row_mods).intersection(set(col_mods))
+
+    cong['common'] = ''
+
+    for index in cong.index:
+        intersect = check_row(cong.loc[index,'mrna_mods'], cong.loc[index,'cnv_mods'])
+        cong.set_value(index, 'common', intersect)
+    
+    return cong
+
+
+def plot_violin(cong, x_='tissue', y_='pearson', hue_='same_group', title_='Cancer Cell Line Congruency', save=False):
+    # % matplotlib inline
+    # ax = sns.boxplot(x='same_group', y="score", data=cs_1) # plots box and wisker for same/notsame group
+    plt.figure(figsize=(40,20))
+    ax = sns.violinplot(x=x_, y=y_, hue=hue_, data=cong, palette="Set2", inner='quartile',split=True, linewidth=2)
+
+    for item in ax.get_xticklabels():
+        item.set_rotation(90)
+        item.set_fontsize(20) 
+    for item in ax.get_yticklabels():
+        item.set_fontsize(20) 
+    plt.ylim(-1, 1)
+    plt.xlabel(x_,fontsize=20)
+    plt.ylabel(y_,fontsize=20)
+
+    fig = ax.get_figure()
+    fig.suptitle(title_, fontsize=30)
+    if save:
+        fig.savefig("congruent_pearson_GSEA_violin.png")
+        
+        
+# unpacks sets in 'common' column into strings.  multiple entries are duplicated into rows
+def unpack_pivot(stackdf):
+    col_to_unpack = 'common'
+    df = stackdf.copy()
+    df = df.loc[df['same_group'] == 1]
+    df = pd.DataFrame({col:np.repeat(df[col].values, df[col_to_unpack].str.len()) 
+                  for col in df.columns.difference([col_to_unpack])
+                 }).assign(**{col_to_unpack:np.concatenate(df[col_to_unpack].map(list).values)})[df.columns.tolist()]
+
+    df = df[['tissue', 'common', 'pearson']]
+    df = df.groupby(['tissue','common']).mean().reset_index()
+    return df.pivot( 'common', 'tissue','pearson')
+
+
+def printks(df, iterator, by_col='tissue', score='t-test', group='same_group'):
+    lol, l = [], []
+    header = ['tissue', 't_Tstat', 't_Pval', 'ks_Dval', 'ks_Pval']
+    for tissue in iterator:
+    #     tisdf = unif_2[unif_2['tissue'] == tissue]
+        diffdf = df[(df[group] == 0)&(df[by_col] == tissue)].dropna()
+        samedf = df[(df[group] == 1)&(df[by_col] == tissue)].dropna()
+        try:
+            lol.append([tissue, *stats.ttest_ind(samedf[score],diffdf[score]), *stats.ks_2samp(diffdf[score], samedf[score])])
+        except:
+            ValueError
+    return pd.DataFrame(lol, columns=header)
+
+
+def summary_sort(cong, by_col='tissue', score='pearson', group='same_group'):
+    iterator = [tissue for tissue in cong[by_col].unique()]
+    same_module_df = printks(cong, iterator, by_col, score, group)
+    same_module_df.sort_values(by=['ks_Dval'], ascending=False, inplace=True)
+    same_module_df.reset_index(drop=True, inplace=True)
+    same_module_df.sort_values(by='t_Tstat', ascending=False)
+    return same_module_df
+
+
+def plot_exp_dist(tupe):
+    """
+    :param tupe: tuple of ('gene_exp', 'gene_cnv'), where exp may depend on cnv context
+    """
+    exp_gene, cnv_gene = tupe[0], tupe[1]
+    sep_con = cdel.loc[cnv_gene]
+    pos_context, neg_context = sep_con[sep_con == 1].index, sep_con[sep_con == 0].index
+
+    pos_exp, neg_exp = exp[pos_context].loc[exp_gene], exp[neg_context].loc[exp_gene]
+
+    if len(pos_exp) == 0:
+        print("no context for ",cnv_gene,", no missing gene")
+    elif len(neg_exp) ==0:
+        print("no context for ",cnv_gene,", no present gene")
+    else:
+        sns.kdeplot(pos_exp, label="- "+cnv_gene, color="r").set_title(exp_gene+" Expression in Context of "+cnv_gene)
+        sns.rugplot(pos_exp, color="r")
+        sns.kdeplot(neg_exp, label="+ "+cnv_gene, color="b")
+        sns.rugplot(neg_exp, color="b")
+    print(pos_exp.var(),neg_exp.var())
+    
+    
+
 def TESTrandomPairContextStat(n_samp, expdf, cnvdf, nan_style='omit', shrink=True, permute=False):
     """
     takes exp and cnv genes and returns pair summary statistics
