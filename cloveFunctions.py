@@ -8,6 +8,7 @@ warnings.filterwarnings('ignore')
 import os
 import pandas as pd
 import numpy as np
+import itertools
 import seaborn as sns
 import matplotlib
 matplotlib.use('Qt4Agg')
@@ -357,7 +358,119 @@ def t_welch(nx, ny, mx, my, vx, vy, fudge, tails=2):
 # randomly select 10000 cnv and exp genes to form 10000 pairs
 
 
+def explicitPairContextStat(expdf, cnvdf, exp_lis=False, cnv_lis=False, cat_df=False, nan_style='omit', permute=False):
+    """
+    takes exp and cnv genes (either all or explicitand returns pair summary statistics
+    
+    :param n_samp: int, number of random samples to take
+    :param expdf: pandas dataframe, expression by sample 
+                    (hopefully filtered with mainFilter, tissue specific, with matching samples in cnv)
+    :param cnvdf: pandas dataframe, binarized mask 5(1=del, 0=nodel) deletion by sample 
+                    (hopefully filtered with mainFilter, tissue specific, with matching samples in exp)
+    :param exp_lis: list of str, HUGO gene names in expdf to restrict to, default is False (use all genes in expdf)
+    :param exp_lis: list of str, HUGO gene names in cnvdf to restrict to, default is False (use all genes in cnvdf)
+    :param in_df: pandas dataframe, previous calculations to concat new results to, used in while loop to get n_samp
+    :param nan_style: str, how the stats.ttest_ind treats NANs, {‘propagate’, ‘raise’, ‘omit’}
+    :param permute: bool, True will calculate pairs with randomly permuted expression matrix as null model
+    
+    returns df[['exp', 'cnv', 'cntxt_pos_mu', 'cntxt_neg_mu', 
+                'cntxt_pos_var', 'cntxt_neg_var', 
+                'cntxt_pos_n', 'cntxt_neg_n']]
+    """
+    
+    cells = list(set(cnvdf.columns).intersection(expdf.columns))
+    expdf = expdf[cells]
+    cmask = cnvdf[cells] == 1
+    
+    if type(exp_lis) != bool:
+        exp_samp = set(expdf.index).intersection(exp_lis)
+        for gene in exp_lis:
+            if gene not in expdf.index:
+                print('{} not found in expdf.index.  Omitted'.format(gene))
+    else:
+        exp_samp = expdf.index
+    
+    if type(cnv_lis) != bool:
+        cnv_samp = set(cnvdf.index).intersection(cnv_lis)
+        for gene in cnv_lis:
+            if gene not in cnvdf.index:
+                print('{} not found in cnvdf.index.  Omitted'.format(gene))
+    else:
+        cnv_samp = cnvdf.index
+    print('attempting {} comparisons with current parameters'.format(len(exp_samp) * len(cnv_samp)))
+    r={'exp':[],'cnv':[]}
+    for pair in itertools.product(exp_samp, cnv_samp):
+        r['exp'].append(pair[0])
+        r['cnv'].append(pair[1])
+    df = pd.DataFrame(r)
+    
+    pos_n, neg_n, = [], []
+    pos_mu, neg_mu = [], []
+    pos_var, neg_var = [], []
+    cohens_d = []
+    np_t_s, np_p_s = [], []
+    np_t_w, np_p_w = [], []
+    
+    df
+    
+    for row in df.itertuples():
+        # mask cnv contexts onto expression data
+        pos = np.array(expdf.loc[row.exp][cmask.loc[row.cnv]])
+        neg = np.array(expdf.loc[row.exp][~cmask.loc[row.cnv]])
+        
+        # calculate n
+        pos_n.append(len(pos))
+        neg_n.append(len(neg))
+        
+        # calculate mu
+        pos_mu.append(pos.mean())
+        neg_mu.append(neg.mean())
+        
+        # calculate var
+        pos_var.append(pos.var())
+        neg_var.append(neg.var())
+        
+        # calculate cohen's d
+        cohens_d.append(cohenD(pos, neg))
+        
+        # calculate t_stat, welch
+        t, p = stats.ttest_ind(pos, neg, nan_policy=nan_style, equal_var=True)
+        np_t_w.append(t)
+        np_p_w.append(p)
+        
+        if permute:
+            pos = np.array(expdf.loc[row.exp][cmask_n.loc[row.cnv]])
+            neg = np.array(expdf.loc[row.exp][~cmask_n.loc[row.cnv]])
+            t, p = stats.ttest_ind(pos, neg, nan_policy=nan_style, equal_var=True)
+            np_t_w_null.append(t)
+            np_p_w_null.append(p)
+            
+    df['pos_n'] = pos_n
+    df['neg_n'] = neg_n
+    df['pos_mu'] = pos_mu
+    df['neg_mu'] = neg_mu
+    df['pos_var'] = pos_var
+    df['neg_var'] = neg_var
+    df['cohens_d'] = cohens_d
+    df['np_t_w'] = np_t_w
+    df['np_p_w'] = np_p_w
+    
+    if permute:
+        df['np_t_w_null'] = np_t_w_null
+        df['np_t_w_null'] = np_t_w_null
+    
+    df.dropna(inplace=True)
 
+    right = expdf.rename_axis('exp', axis=0) 
+    right['gene_var_exp'] = right.var(axis=1)
+    right = right.reset_index()
+    
+    df = pd.merge(df, right[['exp','gene_var_exp']], on='exp')
+    
+    if cat_df:
+        return pd.concat([cat_df, df])
+        
+    return df
     
 
 def randomPairContextStat(n_samp, expdf, cnvdf, cat_df=False, nan_style='omit', permute=False):
@@ -456,6 +569,31 @@ def randomPairContextStat(n_samp, expdf, cnvdf, cat_df=False, nan_style='omit', 
         return pd.concat([cat_df, df])
         
     return df
+
+
+def sample_by_loc(df, chr_num, arm=False, pos_sort=True):
+    """
+    sample clove pairs by location of cnv gene
+    
+    :param df: pd df, output of clove computation
+    :param chr_num: int, chromosome number to sample on
+    :param arm: str, p or q arm
+    :param pos_sort: bool, sorts by chr position, default true
+                        
+    """
+    
+    df['arm'] = df['chromosome'].str.extract('(p)', expand=True)
+    # drop NaN locations (65 default for breast cloves)
+    df.dropna(inplace=True)
+
+    # subsample to chromosome number
+    df['chr'] = df['chr'].astype(int)
+    
+    #sort by pos
+    if pos_sort:
+        return df[df['chr'] == chr_num].sort_values(by='chromosome')
+    
+    return df[df['chr'] == chr_num]
 
 
 def prepare_vv(exp, cnv, cloves, sig=0.01):
