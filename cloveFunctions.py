@@ -182,12 +182,12 @@ def dfIntersection(reducedf, dftofilter):
 
 # In[ ]:
 
-def mainFitler(expdf_fh, cnvdf_fh='CCLE_DEL_calls.pickle', var=0.2, n=5, amp_fh=False, dele_fh=False, mut_fh=False, save=False):
+def mainFitler(expdf, cnvdf, var=0.2, n=5, amp_fh=False, dele_fh=False, mut_fh=False, save=False):
     """
     returns expdf and cnvdf filtered on power and abberations, used for CCLE data mostly
     
-    :param expdf_fn: str, filename of pickled expression dataframe, (check in /clove/tissueDf_raw)
-    :param cnvdf_fn: str, filename revealer expression calls, (CCLE_DEL_calls.pickle)
+    :param expdf: pd df, expression dataframe, (check in /clove/data/)
+    :param cnvdf: pd df, dataframe of copy number calls, (dataCCLE_DEL_calls.pickle)
     :param var: float, minimum gene variance to filter low-variance pairs
     :param amp_fh: str, filename of pickled dataframe of binarized ampflication calls (eg REVEALER)
     :param dele_fh: str, filename of pickled dataframe of binarized deletion calls (eg REVEALER)
@@ -197,8 +197,6 @@ def mainFitler(expdf_fh, cnvdf_fh='CCLE_DEL_calls.pickle', var=0.2, n=5, amp_fh=
     :returns: filtered expdf, filtered cnvdf
     """
     # filter on power
-    expdf = pd.read_pickle(expdf_fh)
-    cnvdf = pd.read_pickle(cnvdf_fh)
     expdf, cnvdf = powerFilter(expdf, cnvdf, var, n)
     
     # filter out abberations  
@@ -358,6 +356,10 @@ def t_welch(nx, ny, mx, my, vx, vy, fudge, tails=2):
 
 # randomly select 10000 cnv and exp genes to form 10000 pairs
 
+
+
+    
+
 def randomPairContextStat(n_samp, expdf, cnvdf, cat_df=False, nan_style='omit', permute=False):
     """
     takes exp and cnv genes and returns pair summary statistics
@@ -443,13 +445,6 @@ def randomPairContextStat(n_samp, expdf, cnvdf, cat_df=False, nan_style='omit', 
                                                df['pos_mu'], df['neg_mu'], 
                                                df['pos_var'], df['neg_var'], 
                                                meanVar(expdf))
-    
-    # right = expdf.reset_index()
-    # right['gene_var_exp'] = right.var(axis=1)
-    # if 'index' in right.columns:
-    #     right.rename(columns={'index':'exp'}, inplace=True)
-    # elif 'gene_id' in right.columns:
-    #     right.rename(columns={'gene_id':'exp'}, inplace=True)
     
     right = expdf.rename_axis('exp', axis=0) 
     right['gene_var_exp'] = right.var(axis=1)
