@@ -689,7 +689,9 @@ def printks(df, iterator, by_col='tissue', score='t-test', group='same_group'):
         diffdf = df[(df[group] == 0)&(df[by_col] == tissue)].dropna()
         samedf = df[(df[group] == 1)&(df[by_col] == tissue)].dropna()
         try:
-            lol.append([tissue, *stats.ttest_ind(samedf[score],diffdf[score]), *stats.ks_2samp(diffdf[score], samedf[score])])
+            tt = stats.ttest_ind(samedf[score],diffdf[score])
+            ks = stats.ks_2samp(diffdf[score], samedf[score])
+            lol.append([tissue, tt[0], tt[1], ks[0], ks[1]])
         except:
             ValueError
     return pd.DataFrame(lol, columns=header)
