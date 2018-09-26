@@ -571,7 +571,25 @@ def randomPairContextStat(n_samp, expdf, cnvdf, cat_df=False, nan_style='omit', 
     return df
 
 
-def sample_by_loc(df, chr_num, arm=False, pos_sort=True):
+def map_locus(df, map_col='cnv', lf_fh='data/hugo_to_locus.txt', lf_col=['Approved Symbol', 'Chromosome']):
+    """
+    maps pandas column of HUGO genes to chromosome locus
+    
+    :param df: pd df, typically CLOvE results df
+    :param map_col: str, columns of above df on which to map chromosome locus, default 'cnv'
+    :param lf_fh: str, file path and name of chromosome locations, default 'data/hugo_to_locus.txt'
+                       default file downloaded from https://www.genenames.org/cgi-bin/download
+    :param lf_col: list of str, collection of cols from lf_fh to keep
+    
+    returns df with mapped chromosomal locations in new column 'chromosome'
+    """
+    chrloc = pd.read_csv(lf_fh, sep = '\t')[lf_col]
+    chrloc.columns = [map_col, 'chromosome']
+    
+    return pd.merge(df, chrloc, on='cnv', how='inner').sort_values(by='chromosome')
+
+
+def sample_by_loc(df, chr_num, arm='p', pos_sort=True):
     """
     sample clove pairs by location of cnv gene
     
@@ -581,8 +599,10 @@ def sample_by_loc(df, chr_num, arm=False, pos_sort=True):
     :param pos_sort: bool, sorts by chr position, default true
                         
     """
-    
-    df['arm'] = df['chromosome'].str.extract('(p)', expand=True)
+    if arm.lower() == 'p':
+        df['arm'] = df['chromosome'].str.extract('(p)', expand=True)
+    if arm.lower() == 'q':
+        df['arm'] = df['chromosome'].str.extract('(q)', expand=True)
     # drop NaN locations (65 default for breast cloves)
     df.dropna(inplace=True)
 
