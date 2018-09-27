@@ -571,7 +571,56 @@ def randomPairContextStat(n_samp, expdf, cnvdf, cat_df=False, nan_style='omit', 
     return df
 
 
-def map_locus(df, map_col='cnv', lf_fh='data/hugo_to_locus.txt', lf_col=['Approved Symbol', 'Chromosome']):
+from scipy.stats import pearsonr
+from scipy.spatial import distance
+from sklearn.metrics.pairwise import cosine_similarity
+
+def rolling_similarity(df, group='cnv', partners='exp', data='np_t_w', how='pearson', locus='chromosome'):
+    """
+    computes similarity between array of data for one gene partners and each successive chromosomal neighbor
+    
+    :param df: pd df, clove results, sorted in ascending order of chromosome locus
+    :param group: str, df column label on which to form gene neigbors, default 'cnv'
+    :param members: str, df column label on which to pair partners with gene neighbors, default 'exp'
+    :param data: str, df column label of source data to populate arrays, default 'np_t_w' (clove t-stats)
+    :param how: str, choice of: {pearson, euclidian, cosine}
+    :param align: bool, False compares two arrays which don't necessarily have same gene index
+    
+    returns pd df of pairs, scores, and chosen similary metric, ordered by locus
+    """
+    
+    unique_genes = df[group].unique()
+    df = df[[locus, group, partners, data]].sort_values(by=locus)
+    results = []
+    for idx, g0 in enumerate(unique_genes):
+        if idx < len(unique_genes) - 1:
+            for idxk, gk in enumerate(unique_genes[idx+1:]):
+                g1 = gk  # unique_genes[idx+1]
+                merged = pd.merge(df[df[group] == g0], df[df[group] == g1][[partners,group,data]], how='inner', on=partners)
+                merged.columns = [locus,'cnv_g0','exp','clove_g0','cnv_g1','clove_g1']
+                print(merged)
+
+                if how == 'pearson':
+                    # produces NaN
+                    cols = [group, partners, how ,'pval']
+                    pear, pval = pearsonr(merged['clove_g0'], merged['clove_g1'])
+                    results.append([g0,g1,pear,pval])
+                elif how == 'euclidian':
+                    cols = [group, partners, how]
+                    d = distance.euclidean(merged['clove_g0'], merged['clove_g1'])
+                    # error: (offx>=0 && offx<len(x)) failed for 2nd keyword offx: dnrm2:offx=0
+                    results.append([g0, g1, d])
+                elif how == 'cosine':
+                    cols = [group, partners, how]
+                    # error: (offx>=0 && offx<len(x)) failed for 2nd keyword offx: dnrm2:offx=0
+                    d = cosine_similarity(merged['clove_g0'], merged['clove_g1'])[0][0]  
+                    results.append([g0, g1, d])
+
+#     return map_locus(pd.DataFrame(results, columns=cols))
+    return pd.DataFrame(results, columns=cols)
+
+
+def map_locus(df, map_col='cnv', lf_fh='data/hugo_to_locus.txt', lf_col=['Approved Symbol', 'Chromosome'], sort=True):
     """
     maps pandas column of HUGO genes to chromosome locus
     
@@ -580,13 +629,17 @@ def map_locus(df, map_col='cnv', lf_fh='data/hugo_to_locus.txt', lf_col=['Approv
     :param lf_fh: str, file path and name of chromosome locations, default 'data/hugo_to_locus.txt'
                        default file downloaded from https://www.genenames.org/cgi-bin/download
     :param lf_col: list of str, collection of cols from lf_fh to keep
+    :param sort: bool, sorts by chromosome location, default True
     
     returns df with mapped chromosomal locations in new column 'chromosome'
     """
     chrloc = pd.read_csv(lf_fh, sep = '\t')[lf_col]
     chrloc.columns = [map_col, 'chromosome']
     
-    return pd.merge(df, chrloc, on='cnv', how='inner').sort_values(by='chromosome')
+    if sort:
+        return pd.merge(df, chrloc, on='cnv', how='inner').sort_values(by='chromosome')
+    else:
+        return pd.merge(df, chrloc, on='cnv', how='inner')
 
 
 def sample_by_loc(df, chr_num, arm='p', pos_sort=True):
@@ -616,50 +669,7 @@ def sample_by_loc(df, chr_num, arm='p', pos_sort=True):
     return df[df['chr'] == chr_num]
 
 
-from scipy.stats import pearsonr
-from scipy.spatial import distance
-from sklearn.metrics.pairwise import cosine_similarity
-
-def rolling_similarity(df, group='cnv', partners='exp', data='np_t_w', how='pearson', locus='chromosome'):
-    """
-    computes similarity between array of data for one gene partners and each successive chromosomal neighbor
-    
-    :param df: pd df, clove results, sorted in ascending order of chromosome locus
-    :param group: str, df column label on which to form gene neigbors, default 'cnv'
-    :param members: str, df column label on which to pair partners with gene neighbors, default 'exp'
-    :param data: str, df column label of source data to populate arrays, default 'np_t_w' (clove t-stats)
-    :param how: str, choice of: {pearson, euclidian, cosine}
-    :param align: bool, False compares two arrays which don't necessarily have same gene index
-    
-    returns pd df of pairs, scores, and chosen similary metric, ordered by locus
-    """
-    
-    unique_genes = df[group].unique()
-    df = df[[locus, group, partners, data]].sort_values(by=locus)
-    results = []
-    for idx, g0 in enumerate(unique_genes):
-        if idx < len(unique_genes) - 1:
-            g1 = unique_genes[idx+1]
-            merged = pd.merge(df[df[group] == g0], df[df[group] == g1][[partners,group,data]], how='inner', on=partners)
-            merged.columns = [locus,'cnv_g0','exp','clove_g0','cnv_g1','clove_g1']
-
-            if how == 'pearson':
-                # produces NaN
-                cols = [group, partners, how ,'pval']
-                pear, pval = pearsonr(merged['clove_g0'], merged['clove_g1'])
-                results.append([g0,g1,pear,pval])
-            elif how == 'euclidian':
-                cols = [group, partners, how]
-                d = distance.euclidean(merged['clove_g0'], merged['clove_g1'])
-                # error: (offx>=0 && offx<len(x)) failed for 2nd keyword offx: dnrm2:offx=0
-                results.append([g0, g1, d])
-            elif how == 'cosine':
-                cols = [group, partners, how]
-                # error: (offx>=0 && offx<len(x)) failed for 2nd keyword offx: dnrm2:offx=0
-                d = cosine_similarity(merged['clove_g0'], merged['clove_g1'])
-                results.append([g0, g1, d])
-
-    return map_locus(pd.DataFrame(results, columns=cols)).sort_values(by=locus, ascending=True)
+-
 
 def prepare_vv(exp, cnv, cloves, sig=0.01):
     """Prepare CLoVE computations df for vulnerability vector
