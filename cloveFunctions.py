@@ -630,16 +630,18 @@ def rolling_similarity(df, group='cnv', partners='exp', data='np_t_w', how='pear
     :param data: str, df column label of source data to populate arrays, default 'np_t_w' (clove t-stats)
     :param how: str, choice of: {pearson, euclidian, cosine}
     :param align: bool, False compares two arrays which don't necessarily have same gene index
+    
+    returns pd df of pairs, scores, and chosen similary metric, ordered by locus
     """
     
     unique_genes = df[group].unique()
-    df = df[[locus, group, partners, data]]
+    df = df[[locus, group, partners, data]].sort_values(by=locus)
     results = []
     for idx, g0 in enumerate(unique_genes):
         if idx < len(unique_genes) - 1:
             g1 = unique_genes[idx+1]
-            merged = pd.merge(df[df[group] == g0], df[df[group] == g1], how='inner', on=partners)
-            merged.columns = ['cnv_g0','exp','clove_g0','cnv_g1','clove_g1']
+            merged = pd.merge(df[df[group] == g0], df[df[group] == g1][[partners,group,data]], how='inner', on=partners)
+            merged.columns = [locus,'cnv_g0','exp','clove_g0','cnv_g1','clove_g1']
 
             if how == 'pearson':
                 # produces NaN
@@ -656,10 +658,8 @@ def rolling_similarity(df, group='cnv', partners='exp', data='np_t_w', how='pear
                 # error: (offx>=0 && offx<len(x)) failed for 2nd keyword offx: dnrm2:offx=0
                 d = cosine_similarity(merged['clove_g0'], merged['clove_g1'])
                 results.append([g0, g1, d])
-                    
 
-    return pd.DataFrame(results, columns=cols).sort_values(by=locus, ascending=True)
-
+    return map_locus(pd.DataFrame(results, columns=cols)).sort_values(by=locus, ascending=True)
 
 def prepare_vv(exp, cnv, cloves, sig=0.01):
     """Prepare CLoVE computations df for vulnerability vector
