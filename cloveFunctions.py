@@ -598,7 +598,6 @@ def rolling_similarity(df, group='cnv', partners='exp', data='np_t_w', how='pear
                 g1 = gk  # unique_genes[idx+1]
                 merged = pd.merge(df[df[group] == g0], df[df[group] == g1][[partners,group,data]], how='inner', on=partners)
                 merged.columns = [locus,'cnv_g0','exp','clove_g0','cnv_g1','clove_g1']
-                print(merged)
 
                 if how == 'pearson':
                     # produces NaN
@@ -616,7 +615,6 @@ def rolling_similarity(df, group='cnv', partners='exp', data='np_t_w', how='pear
                     d = cosine_similarity(merged['clove_g0'], merged['clove_g1'])[0][0]  
                     results.append([g0, g1, d])
 
-#     return map_locus(pd.DataFrame(results, columns=cols))
     return pd.DataFrame(results, columns=cols)
 
 
@@ -669,7 +667,7 @@ def sample_by_loc(df, chr_num, arm='p', pos_sort=True):
     return df[df['chr'] == chr_num]
 
 
--
+
 
 def prepare_vv(exp, cnv, cloves, sig=0.01):
     """Prepare CLoVE computations df for vulnerability vector
