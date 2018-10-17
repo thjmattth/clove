@@ -247,7 +247,7 @@ def clustertxt(fh):
     return lis
 
 
-def joint_annotate(df, title, x_name='ipl_avg_TC', y_name='ipl_avg_nonTC', annotate_col='resid', annotate_n=5):
+def joint_annotate(df, title, x_name='ipl_avg_TC', y_name='ipl_avg_nonTC', annotate_col='resid', annotate_n=5):continue
     g = sns.jointplot(x_name, y_name, data=df, kind="reg",
                       xlim=(-10, 10), ylim=(-10, 10), color="r", size=7)
 
