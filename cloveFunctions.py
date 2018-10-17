@@ -197,6 +197,12 @@ def mainFitler(expdf, cnvdf, var=0.2, n=5, amp_fh=False, dele_fh=False, mut_fh=F
     
     :returns: filtered expdf, filtered cnvdf
     """
+    # filter on tissue
+    cells = list(set(cnvdf.columns).intersection(expdf.columns))
+    expdf = expdf[cells]
+    cnvdf = cnvdf[cells]
+    
+    
     # filter on power
     expdf, cnvdf = powerFilter(expdf, cnvdf, var, n)
     
