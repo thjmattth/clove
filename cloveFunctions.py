@@ -229,6 +229,11 @@ def mainFitler(expdf, cnvdf, var=0.2, n=5, amp_fh=False, dele_fh=False, mut_fh=F
     
     :returns: filtered expdf, filtered cnvdf
     """
+    #print info before filtering
+    print("before filtering:")
+    print(expdf.info())
+    print(cnvdf.info())
+    
     # filter on tissue
     cells = list(set(cnvdf.columns).intersection(expdf.columns))
     expdf = expdf[cells]
@@ -245,6 +250,11 @@ def mainFitler(expdf, cnvdf, var=0.2, n=5, amp_fh=False, dele_fh=False, mut_fh=F
         filt_cond = 'v' + ''.join(str(var).split('.')) + 'n' + str(n)
         expdf.to_pickle('_'.join(expdf_fh.split('_')[:-1] + [filt_cond] + [expdf_fh.split('_')[-1]]))
         cnvdf.to_pickle('_'.join(cnvdf_fh.split('_')[:-1] + [filt_cond] + [cnvdf_fh.split('_')[-1]]))   
+    
+    print("after filtering (min_var={}, min_n={}:".format(str(var),str(n))
+    print(expdf.info())
+    print(cnvdf.info())
+    
     
     return (expdf, cnvdf)
 
