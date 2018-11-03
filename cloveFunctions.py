@@ -113,6 +113,21 @@ def subset_by_tissue(df, tissue=None, casedf='data/tcga_cases.20181026.tab.gz', 
     id_trim = [sample for sample in df.columns if sample[:12] in list(casedf[casedf['primary_site'].str.contains(tissue)]['submitter_id'])]
     return df[id_trim]
 
+
+def clean_exp_geneIDx(df):
+    """
+    removes the | and gene number from the index of the TCGA expression dataframe
+    
+    :param df: pandas dataframe, expression matrix with name|number in index
+    
+    returns df reindexed on gene name with gene number and non-first gene names dropped"""
+    
+    if df.index.any("|"):
+        df["gene_id"], df["gene_num"] = zip(*df.index.str.split('|').tolist())
+        df=df.reset_index(drop=True)
+        df=df.set_index(df["gene_id"])
+        del df["gene_num"]
+        return df[~df.index.duplicated(keep='first')]
 # In[33]:
 
 
