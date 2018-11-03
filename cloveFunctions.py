@@ -96,6 +96,23 @@ def ccleTissueSelect(expdf_fn, cnvdf_fn, celldf_fn, tissue, subtype, out_dir='')
     return (exp, cnv)
 
 
+def subset_by_tissue(df, tissue=None, casedf='data/tcga_cases.20181026.tab.gz', exp=False):
+    """
+    subsets expression or copy number data by samples belonging to specific tissue
+    
+    :param df: pandas dataframe, expression or copy number data from TCGA with long column/samp IDs
+    :param tissue: str, tissue to select (case insenstive)
+    :param casedf: str, file path of TCGA tab.gz sample info file
+    
+    returns df subsetted by samples belonging to same primary site as tissue
+    """
+    
+    casedf = pd.read_csv(casedf, sep='\t', compression='gzip', index_col=0)
+    casedf['primary_site'] = casedf['primary_site'].str.lower()
+    tissue = tissue.lower()
+    id_trim = [sample for sample in df.columns if sample[:12] in list(casedf[casedf['primary_site'].str.contains(tissue)]['submitter_id'])]
+    return df[id_trim]
+
 # In[33]:
 
 
@@ -441,8 +458,6 @@ def explicitPairContextStat(expdf, cnvdf, exp_lis=False, cnv_lis=False, cat_df=F
         
         # calculate t_stat, welch
         t, p = stats.ttest_ind(pos, neg, nan_policy=nan_style, equal_var=True)
-        np_t_w.append(t)
-        np_p_w.append(p)
         
         if permute:
             pos = np.array(expdf.loc[row.exp][cmask_n.loc[row.cnv]])
@@ -463,7 +478,7 @@ def explicitPairContextStat(expdf, cnvdf, exp_lis=False, cnv_lis=False, cat_df=F
     
     if permute:
         df['np_t_w_null'] = np_t_w_null
-        df['np_t_w_null'] = np_t_w_null
+        df['np_p_w_null'] = np_p_w_null
     
     df.dropna(inplace=True)
 
