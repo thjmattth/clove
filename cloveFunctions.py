@@ -96,13 +96,14 @@ def ccleTissueSelect(expdf_fn, cnvdf_fn, celldf_fn, tissue, subtype, out_dir='')
     return (exp, cnv)
 
 
-def subset_by_tissue(df, tissue=None, casedf='data/tcga_cases.20181026.tab.gz', exp=False):
+def subset_by_tissue(df, tissue=None, casedf='data/tcga_cases.20181026.tab.gz', trunc_id=False):
     """
     subsets expression or copy number data by samples belonging to specific tissue
     
     :param df: pandas dataframe, expression or copy number data from TCGA with long column/samp IDs
     :param tissue: str, tissue to select (case insenstive)
     :param casedf: str, file path of TCGA tab.gz sample info file
+    :param trunc_id: bool, True truncates sample id column headers to first 12 chars to match other TCGA platforms
     
     returns df subsetted by samples belonging to same primary site as tissue
     """
@@ -110,7 +111,11 @@ def subset_by_tissue(df, tissue=None, casedf='data/tcga_cases.20181026.tab.gz', 
     casedf = pd.read_csv(casedf, sep='\t', compression='gzip', index_col=0)
     casedf['primary_site'] = casedf['primary_site'].str.lower()
     tissue = tissue.lower()
-    id_trim = [sample for sample in df.columns if sample[:12] in list(casedf[casedf['primary_site'].str.contains(tissue)]['submitter_id'])]
+    if trunc_id:
+        id_trim = [samp[:12] for samp in df.columns if samp[:12] in list(casedf[casedf['primary_site'].str.contains(tissue)]['submitter_id'])]
+        df.columns = [col[:12] for col in df.columns]
+    else :
+        id_trim = [samp for samp in df.columns if samp[:12] in list(casedf[casedf['primary_site'].str.contains(tissue)]['submitter_id'])]
     return df[id_trim]
 
 
@@ -251,7 +256,7 @@ def mainFitler(expdf, cnvdf, var=0.2, n=5, amp_fh=False, dele_fh=False, mut_fh=F
         expdf.to_pickle('_'.join(expdf_fh.split('_')[:-1] + [filt_cond] + [expdf_fh.split('_')[-1]]))
         cnvdf.to_pickle('_'.join(cnvdf_fh.split('_')[:-1] + [filt_cond] + [cnvdf_fh.split('_')[-1]]))   
     
-    print("after filtering (min_var={}, min_n={}:".format(str(var),str(n))
+    print("after filtering (min_var={}, min_n={}:".format(str(var),str(n)))
     print(expdf.info())
     print(cnvdf.info())
     
@@ -458,8 +463,8 @@ def explicitPairContextStat(expdf, cnvdf, exp_lis=False, cnv_lis=False, cat_df=F
     cohens_d = []
     np_t_s, np_p_s = [], []
     np_t_w, np_p_w = [], []
-    
-    df
+    np_t_w_null, np_p_w_null = [], []
+  
     
     for row in df.itertuples():
         # mask cnv contexts onto expression data
