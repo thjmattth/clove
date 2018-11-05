@@ -236,7 +236,9 @@ def mainFitler(expdf, cnvdf, var=0.2, n=5, amp_fh=False, dele_fh=False, mut_fh=F
     """
     #print info before filtering
     print("before filtering:")
+    print("exp:")
     print(expdf.info())
+    print("cnv:")
     print(cnvdf.info())
     
     # filter on tissue
@@ -257,7 +259,9 @@ def mainFitler(expdf, cnvdf, var=0.2, n=5, amp_fh=False, dele_fh=False, mut_fh=F
         cnvdf.to_pickle('_'.join(cnvdf_fh.split('_')[:-1] + [filt_cond] + [cnvdf_fh.split('_')[-1]]))   
     
     print("after filtering (min_var={}, min_n={}:".format(str(var),str(n)))
+    print("exp:")
     print(expdf.info())
+    print("cnv:")
     print(cnvdf.info())
     
     
@@ -405,11 +409,35 @@ def t_welch(nx, ny, mx, my, vx, vy, fudge, tails=2):
 #     p = distributions.t.sf(np.abs(t), df) * tails
     return t
 
+def allPairContextStat(expdf, cnvdf, nan_style='omit', permute=False, save='data_large/'):
+    """
+    computes all pairs (post filtering) 
+    """
+    
+    cells = list(set(cnvdf.columns).intersection(expdf.columns))
+    expdf = expdf[cells]
+    cmask = cnvdf[cells] == 1
+    
+    comparisons = len(expdf.index) * len(cnvdf.index)
+    itertools.product(expdf.index, cnvdf.index)
+    
+    count=0
+    percent_complete=0
+    for n in prod:
+        count+=1
+        if count%(comparisons/10)==0:
+            percent_complete+=10
+            print('pair computation {}% complete ({}/{})'.format(percent_complete, count, comparisons))
+    
+    print('attempting {} comparisons with current parameters'.format(comparisons))
+    
+    
+    
+
 
 # In[36]:
 
 # randomly select 10000 cnv and exp genes to form 10000 pairs
-
 
 def explicitPairContextStat(expdf, cnvdf, exp_lis=False, cnv_lis=False, cat_df=False, nan_style='omit', permute=False):
     """
