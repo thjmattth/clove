@@ -418,18 +418,45 @@ def allPairContextStat(expdf, cnvdf, nan_style='omit', permute=False, save='data
     expdf = expdf[cells]
     cmask = cnvdf[cells] == 1
     
+    if permute:
+        if 'cn' in permute or 'copy number' in permute:
+            cmask_n = scrambleDF(cmask)
+            permute = 'cnv'
+        if 'rna' in permute or 'exp' in permute or 'expression' in permute:
+            expdf_n = scrambleDF(expdf)
+            permute = 'exp'
+        else:
+            permute = 'cnv'
+            cmask_n = scrambleDF(cmask)
+        
     comparisons = len(expdf.index) * len(cnvdf.index)
-    itertools.product(expdf.index, cnvdf.index)
-    
+    print('attempting {} comparisons with current parameters'.format(comparisons))
     count=0
     percent_complete=0
-    for n in prod:
+    
+    for n in itertools.product(expdf.index, cnvdf.index):
+        pos = np.array(expdf.loc[n[0]][cmask.loc[n[1]]])
+        neg = np.array(expdf.loc[n[0]][~cmask.loc[n[1]]])
+        t, p = stats.ttest_ind(pos, neg, nan_policy=nan_style, equal_var=True)    
+        if permute=='cnv':
+            pos = np.array(expdf.loc[n[0]][cmask_n.loc[n[1]]])
+            neg = np.array(expdf.loc[n[0]][~cmask_n.loc[n[1]]])
+            t_n, p_n = stats.ttest_ind(pos, neg, nan_policy=nan_style, equal_var=True)
+        if permute=='exp':
+            pos = np.array(expdf_n.loc[n[0]][cmask.loc[n[1]]])
+            neg = np.array(expdf_n.loc[n[0]][~cmask.loc[n[1]]])
+            t_n, p_n = stats.ttest_ind(pos, neg, nan_policy=nan_style, equal_var=True)
+    
+        
+        results = [count, n[0], n[1], t, p, t_n, p_n]
+            
+        # counter
         count+=1
         if count%(comparisons/10)==0:
             percent_complete+=10
             print('pair computation {}% complete ({}/{})'.format(percent_complete, count, comparisons))
     
-    print('attempting {} comparisons with current parameters'.format(comparisons))
+    
     
     
     
@@ -446,7 +473,7 @@ def explicitPairContextStat(expdf, cnvdf, exp_lis=False, cnv_lis=False, cat_df=F
     :param n_samp: int, number of random samples to take
     :param expdf: pandas dataframe, expression by sample 
                     (hopefully filtered with mainFilter, tissue specific, with matching samples in cnv)
-    :param cnvdf: pandas dataframe, binarized mask 5(1=del, 0=nodel) deletion by sample 
+    :param cnvdf: pandas dataframe, binarized mask 5(1=delete, 0=nodelete) deletion by sample 
                     (hopefully filtered with mainFilter, tissue specific, with matching samples in exp)
     :param exp_lis: list of str, HUGO gene names in expdf to restrict to, default is False (use all genes in expdf)
     :param exp_lis: list of str, HUGO gene names in cnvdf to restrict to, default is False (use all genes in cnvdf)
@@ -462,6 +489,8 @@ def explicitPairContextStat(expdf, cnvdf, exp_lis=False, cnv_lis=False, cat_df=F
     cells = list(set(cnvdf.columns).intersection(expdf.columns))
     expdf = expdf[cells]
     cmask = cnvdf[cells] == 1
+    if permute:
+        cmask_n = scrambleDF(cmask)
     
     if type(exp_lis) != bool:
         exp_samp = set(expdf.index).intersection(exp_lis)
