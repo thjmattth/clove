@@ -116,6 +116,7 @@ def subset_by_tissue(df, tissue=None, casedf='data/tcga_cases.20181026.tab.gz', 
         df.columns = [col[:12] for col in df.columns]
     else :
         id_trim = [samp for samp in df.columns if samp[:12] in list(casedf[casedf['primary_site'].str.contains(tissue)]['submitter_id'])]
+    print('id trim len', len(id_trim))
     return df[id_trim]
 
 
@@ -597,8 +598,12 @@ def randomPairContextStat(n_samp, expdf, cnvdf, cat_df=False, nan_style='omit', 
                 'cntxt_pos_n', 'cntxt_neg_n']]
     """
     
-    exp_samp = expdf.sample(n=n_samp, replace=True).index.values
-    cnv_samp = cnvdf.sample(n=n_samp, replace=True).index.values
+    #exp_samp = expdf.sample(n=n_samp, replace=True).index.values
+    #cnv_samp = cnvdf.sample(n=n_samp, replace=True).index.values
+    
+    exp_samp = [expdf.sample(n=1).index[0] for i in range(n_samp)]
+    cnv_samp = [cnvdf.sample(n=1).index[0] for i in range(n_samp)]
+    
     cells = list(set(cnvdf.columns).intersection(expdf.columns))
     expdf = expdf[cells]
     cmask = cnvdf[cells] == 1
@@ -615,7 +620,18 @@ def randomPairContextStat(n_samp, expdf, cnvdf, cat_df=False, nan_style='omit', 
     np_t_s, np_p_s = [], []
     np_t_w, np_p_w = [], []
     
+    count=0
+    percent_complete=0
+    comparisons = len(expdf.index) * len(cnvdf.index)
+    print('attempting {} of {} total possible pairs post-filtering'.format(str(n_samp), str(comparisons)))
+
     for row in df.itertuples():
+        
+        count+=1
+        if count%(n_samp/10)==0:
+            percent_complete+=10
+            print('pair computation {}% complete ({}/{})'.format(percent_complete, count, comparisons))
+        
         # mask cnv contexts onto expression data
         pos = np.array(expdf.loc[row.exp][cmask.loc[row.cnv]])
         neg = np.array(expdf.loc[row.exp][~cmask.loc[row.cnv]])
@@ -662,10 +678,10 @@ def randomPairContextStat(n_samp, expdf, cnvdf, cat_df=False, nan_style='omit', 
         df['np_t_w_null'] = np_t_w_null
     
     df.dropna(inplace=True)
-    df['t_shrnk_glob'] = np.vectorize(t_welch)(df['pos_n'], df['neg_n'], 
-                                               df['pos_mu'], df['neg_mu'], 
-                                               df['pos_var'], df['neg_var'], 
-                                               meanVar(expdf))
+    # df['t_shrnk_glob'] = np.vectorize(t_welch)(df['pos_n'], df['neg_n'], 
+                                               # df['pos_mu'], df['neg_mu'], 
+                                               # df['pos_var'], df['neg_var'], 
+                                               # meanVar(expdf))
     
     right = expdf.rename_axis('exp', axis=0) 
     right['gene_var_exp'] = right.var(axis=1)
@@ -1042,3 +1058,29 @@ def plot_exp_dist(tupe):
     print(pos_exp.var(),neg_exp.var())
     
     
+    
+def graph_real_vs_null(clovedf, tissue):
+    """
+    graphs real vs null kde plot with statistic
+    
+    :param clovedf: pandas dataframe, clove results data frame
+                    should contain columns 'np_t_w_null' and 'np_t_w'
+    :param tissue: str, tissue type, solely used for titling the graph
+    
+    returns nothing, just displays a graph
+    """
+    %matplotlib inline
+    sns.set_style("white")
+    sns.distplot(clovedf['np_t_w_null'], color='gray',hist=False, kde=True, label='null')
+
+    sns.distplot(clovedf['np_t_w'], color='red',hist=False, kde=True, label='real')
+    plt.title('separation of computed real and null cloves: '+tissue)
+    plt.legend()
+    ks = stats.ks_2samp(clovedf['np_t_w_null'], clovedf['np_t_w'])
+    plt.text(30, .35, 'ks='+str(round(ks.statistic, 2)))
+    if ks.pvalue < 0.001:
+        plt.text(30, .32, 'p<0.001')
+    else:
+        plt.text(30, .32, 'p='+str(round(ks.pvalue, 2)))
+    
+    sns.despine()
