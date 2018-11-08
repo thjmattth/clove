@@ -1083,3 +1083,28 @@ def graph_real_vs_null(clovedf, tissue):
         plt.text(30, .32, 'p='+str(round(ks.pvalue, 2)))
     
     sns.despine()
+    
+def graph_chrom_interaction_map(df_piv, tissue='breast',chr_loc='chr1p', similarity_score='pearson', save=True):
+    """
+    creates chromatin interaction-style heatmap of cloves in relation to locus position
+    
+    :param df_piv: pd df, pivot dataframe of similarity score, x and y sorted by chromosome location
+    :param tissue: str, tissue or primary site of samples, default 'breast'
+    :param chr_loc: str, chromosome number and arm of where genes are found, default 'chr1p'
+    :param similarity_score: str, type of similarity measurement used, default 'pearson'
+    :param save: bool, creates a saved figure (in current directory) if True, default is True
+    """
+    fig, ax = plt.subplots()
+    # the size of A4 paper
+    fig.set_size_inches(15, 15)
+    sns.set(font_scale=0.09)
+    sns.heatmap(df_pear_piv, square=True, cbar_kws={"shrink": .82})
+    ax.xaxis.tick_top() # x axis on top
+    ax.xaxis.set_label_position('top')
+    ax.tick_params(length=0)
+    plt.xticks(rotation=90)
+    ax.figure.axes[-1].set_ylabel(similarity_score, size=12)
+    ax.figure.axes[-1].tick_params(axis='y', labelsize=12)
+    
+    if save:
+        fig.savefig('_'.join(tissue, chr_loc, similarity_score, 'A4.png'), dpi=500)
