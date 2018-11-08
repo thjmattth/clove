@@ -1069,7 +1069,6 @@ def graph_real_vs_null(clovedf, tissue):
     
     returns nothing, just displays a graph
     """
-    %matplotlib inline
     sns.set_style("white")
     sns.distplot(clovedf['np_t_w_null'], color='gray',hist=False, kde=True, label='null')
 
