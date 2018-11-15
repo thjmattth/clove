@@ -98,7 +98,7 @@ def ccleTissueSelect(expdf_fn, cnvdf_fn, celldf_fn, tissue, subtype, out_dir='')
 
 def subset_by_tissue(df, tissue=None, casedf='data/tcga_cases.20181026.tab.gz', trunc_id=False):
     """
-    subsets expression or copy number data by samples belonging to specific tissue
+    subsets expression or copy number data by TCGA samples belonging to specific tissue
     
     :param df: pandas dataframe, expression or copy number data from TCGA with long column/samp IDs
     :param tissue: str, tissue to select (case insenstive)
@@ -135,6 +135,88 @@ def clean_exp_geneIDx(df):
         del df["gene_num"]
         return df[~df.index.duplicated(keep='first')]
 # In[33]:
+
+
+def graph_var_dist(df, tissue, y0=0.5, yd=0.05):
+    """
+    plots distribution of variance in the raw expdf before you decide how to filter
+    
+    :param df: pandas dataframe, raw expression dataframe gene x sample
+    :param tissue: str, name of tissue or cohort of interest, just for labeling
+    :param y0: float, top of sig line and label
+    :param yd: float, how much y0 should decrease to fit subsequent sig below it
+    
+    returns None, just displays a plot"""
+    var_arr = df.var(axis=1)
+    sns.set_style("white")
+    plt.xlabel('var')
+    sns.distplot(var_arr, color='black', hist=False)
+
+    for x in range (1,4):
+        sig=round(np.std(var_arr)*x+np.mean(var_arr), 2)
+        n=df[df.var(axis=1) > sig].shape[0]
+        plt.plot([sig,sig], [y0, 0], linestyle='dotted', color='gray')
+        sig_label = '{}sig={}, n={}'.format(str(x), str(sig), str(n))
+        plt.text(sig, y0, sig_label)
+        y0 -= yd
+    sns.despine()
+    plt.title('variance in {} expression, (genes={}, samples={})\n'.format(tissue, df.shape[0], df.shape[1]))
+    plt.show()
+    
+    
+def graph_n_dist(df, tissue, y0=0.5, yd=0.05):
+    """
+    plots distribution of number (n) of +/-bait contexts in the raw cnvdf before you decide how to filter
+    
+    :param df: pandas dataframe, raw copy number dataframe gene x sample
+    :param tissue: str, name of tissue or cohort of interest, just for labeling
+    :param y0: float, top of sig line and label
+    :param yd: float, how much y0 should decrease to fit subsequent sig below it
+    
+    returns None, just displays a plot"""
+    n_arr = df.sum(axis=1)
+    sns.set_style("white")
+    plt.xlabel('n')
+    sns.distplot(n_arr, color='black', hist=False)
+
+    for x in range (1,4):
+        sig=round(np.std(n_arr)*x+np.mean(n_arr), 2)
+        n=df[df.sum(axis=1) > sig].shape[0]
+        plt.plot([sig,sig], [y0, 0], linestyle='dotted', color='gray')
+        sig_label = '{}sig={}, n={}'.format(str(x), str(int(round(sig, 0))), str(n))
+        plt.text(sig, y0, sig_label)
+        y0 -= yd
+    sns.despine()
+    plt.title('n of +/-bait in {} copy number, (genes={}, samples={})\n'.format(tissue, df.shape[0], df.shape[1]))
+    plt.show()
+    
+    
+def load_data(expdf_fh, cnvdf_fh, details=True, need_subset=False):
+    """
+    loads exp and cnv data that has been either pre-subsetted  by tissue or not
+    
+    :param expdf_fh: str, path and handle for expression dataframe
+    :param cnvdf_fh: str, path and handle for copy number dataframe
+    :param details: bool, shows distribution of var and n to inform later filtering
+                    defaults is True, you'll see the graphs (hopefully)
+    :param need_subset: bool or str, subsets dataframes by tissue as str
+                        default is False, meaning dfs are already subsetted by tissue
+    
+    returns expdf, cnvdf
+    """
+    results=[]
+    for df in [expdf_fh, cnvdf_fh]:
+        if df.endswith('.pickle') or df.endswith('.p'):
+            results.append(pd.read_pickle(df))
+        else: results.append(pd.read_csv(df, compression='infer', sep=None, index_col=0)) # sep None infers seps, cool right?
+    if details:
+        if need_subset:
+            t=need_subset
+        else: t="'tissue'"
+        graph_var_dist(results[0], tissue=t, y0=0.30)
+        graph_n_dist(results[1], tissue=t, y0=0.30)
+    
+    return results[0], results[1]
 
 
 def powerFilter(expdf, cnvdf, var_thresh=0.2, n_thresh=5):
@@ -221,7 +303,7 @@ def dfIntersection(reducedf, dftofilter):
 
 # In[ ]:
 
-def mainFitler(expdf, cnvdf, var=0.2, n=5, amp_fh=False, dele_fh=False, mut_fh=False, save=False):
+def mainFitler(expdf, cnvdf, var=0.2, n=5, extra_info=False, amp_fh=False, dele_fh=False, mut_fh=False, save=False):
     """
     returns expdf and cnvdf filtered on power and abberations, used for CCLE data mostly
     
@@ -235,18 +317,20 @@ def mainFitler(expdf, cnvdf, var=0.2, n=5, amp_fh=False, dele_fh=False, mut_fh=F
     
     :returns: filtered expdf, filtered cnvdf
     """
-    #print info before filtering
-    print("before filtering:")
-    print("exp:")
-    print(expdf.info())
-    print("cnv:")
-    print(cnvdf.info())
+
+    exp0 = expdf.shape
+    cnv0 = cnvdf.shape
+    if extra_info:
+        print("before filtering:")
+        print("exp:")
+        print(expdf.info())
+        print("cnv:")
+        print(cnvdf.info())
     
     # filter on tissue
     cells = list(set(cnvdf.columns).intersection(expdf.columns))
     expdf = expdf[cells]
     cnvdf = cnvdf[cells]
-    
     
     # filter on power
     expdf, cnvdf = powerFilter(expdf, cnvdf, var, n)
@@ -259,11 +343,18 @@ def mainFitler(expdf, cnvdf, var=0.2, n=5, amp_fh=False, dele_fh=False, mut_fh=F
         expdf.to_pickle('_'.join(expdf_fh.split('_')[:-1] + [filt_cond] + [expdf_fh.split('_')[-1]]))
         cnvdf.to_pickle('_'.join(cnvdf_fh.split('_')[:-1] + [filt_cond] + [cnvdf_fh.split('_')[-1]]))   
     
-    print("after filtering (min_var={}, min_n={}:".format(str(var),str(n)))
-    print("exp:")
-    print(expdf.info())
-    print("cnv:")
-    print(cnvdf.info())
+    if extra_info:
+        print("after filtering (min_var={}, min_n={}:".format(str(var),str(n)))
+        print("exp:")
+        print(expdf.info())
+        print("cnv:")
+        print(cnvdf.info())
+
+    print('exp: {} --> filter --> {}'.format(exp0,expdf.shape))
+    print('cnv: {} --> filter --> {}'.format(cnv0,cnvdf.shape))
+    possible_pairs = len(expdf.index)*len(cnvdf.index)
+    print('{} CLOvE pairs are possible with these parameters'.format(str(possible_pairs)))
+    print('estimated calculation time: {}min (~7sec/10k pairs)'.format(str(possible_pairs/10000*7/60)))
     
     
     return (expdf, cnvdf)
@@ -582,11 +673,11 @@ def explicitPairContextStat(expdf, cnvdf, exp_lis=False, cnv_lis=False, cat_df=F
     return df
     
 
-def randomPairContextStat(n_samp, expdf, cnvdf, cat_df=False, nan_style='omit', permute=False):
+def randomPairContextStat(n_samp, expdf, cnvdf, verbose=False, cat_df=False, nan_style='omit', permute=False):
     """
     takes exp and cnv genes and returns pair summary statistics
     
-    :param n_samp: int, number of random samples to take
+    :param n_samp: int or str, number of random samples to take (only str is 'all', computing all possible pairs)
     :param expdf: pandas dataframe, expression by sample (hopefully filtered and tissue specific)
     :param cnvdf: pandas dataframe, binarized mask 5(1=del, 0=nodel) deletion by sample
     :param in_df: pandas dataframe, previous calculations to concat new results to, used in while loop to get n_samp
@@ -598,8 +689,6 @@ def randomPairContextStat(n_samp, expdf, cnvdf, cat_df=False, nan_style='omit', 
                 'cntxt_pos_n', 'cntxt_neg_n']]
     """
     
-    #exp_samp = expdf.sample(n=n_samp, replace=True).index.values
-    #cnv_samp = cnvdf.sample(n=n_samp, replace=True).index.values
     
     exp_samp = [expdf.sample(n=1).index[0] for i in range(n_samp)]
     cnv_samp = [cnvdf.sample(n=1).index[0] for i in range(n_samp)]
@@ -607,16 +696,19 @@ def randomPairContextStat(n_samp, expdf, cnvdf, cat_df=False, nan_style='omit', 
     cells = list(set(cnvdf.columns).intersection(expdf.columns))
     expdf = expdf[cells]
     cmask = cnvdf[cells] == 1
+    
     if permute:
         cmask_n = scrambleDF(cmask)
         np_t_w_null, np_p_w_null = [], []
 
     df = pd.DataFrame(pd.Series(exp_samp), columns=['exp'])
     df['cnv'] = pd.Series(cnv_samp)
-    pos_n, neg_n, = [], []
-    pos_mu, neg_mu = [], []
-    pos_var, neg_var = [], []
-    cohens_d = []
+    
+    if verbose:
+        pos_n, neg_n, = [], []
+        pos_mu, neg_mu = [], []
+        pos_var, neg_var = [], []
+        cohens_d = []
     np_t_s, np_p_s = [], []
     np_t_w, np_p_w = [], []
     
@@ -636,25 +728,26 @@ def randomPairContextStat(n_samp, expdf, cnvdf, cat_df=False, nan_style='omit', 
         pos = np.array(expdf.loc[row.exp][cmask.loc[row.cnv]])
         neg = np.array(expdf.loc[row.exp][~cmask.loc[row.cnv]])
         
-        # calculate n
-        pos_n.append(len(pos))
-        neg_n.append(len(neg))
-        
-        # calculate mu
-        pos_mu.append(pos.mean())
-        neg_mu.append(neg.mean())
-        
-        # calculate var
-        pos_var.append(pos.var())
-        neg_var.append(neg.var())
-        
-        # calculate cohen's d
-        cohens_d.append(cohenD(pos, neg))
-        
         # calculate t_stat, welch
         t, p = stats.ttest_ind(pos, neg, nan_policy=nan_style, equal_var=True)
         np_t_w.append(t)
-        np_p_w.append(p)
+        np_p_w.append(p)       
+        
+        if verbose:
+            # calculate n
+            pos_n.append(len(pos))
+            neg_n.append(len(neg))
+
+            # calculate mu
+            pos_mu.append(pos.mean())
+            neg_mu.append(neg.mean())
+
+            # calculate var
+            pos_var.append(pos.var())
+            neg_var.append(neg.var())
+
+            # calculate cohen's d
+            cohens_d.append(cohenD(pos, neg))
         
         if permute:
             pos = np.array(expdf.loc[row.exp][cmask_n.loc[row.cnv]])
@@ -663,36 +756,23 @@ def randomPairContextStat(n_samp, expdf, cnvdf, cat_df=False, nan_style='omit', 
             np_t_w_null.append(t)
             np_p_w_null.append(p)
             
-    df['pos_n'] = pos_n
-    df['neg_n'] = neg_n
-    df['pos_mu'] = pos_mu
-    df['neg_mu'] = neg_mu
-    df['pos_var'] = pos_var
-    df['neg_var'] = neg_var
-    df['cohens_d'] = cohens_d
     df['np_t_w'] = np_t_w
     df['np_p_w'] = np_p_w
     
+    if verbose:
+        df['pos_n'] = pos_n
+        df['neg_n'] = neg_n
+        df['pos_mu'] = pos_mu
+        df['neg_mu'] = neg_mu
+        df['pos_var'] = pos_var
+        df['neg_var'] = neg_var
+        df['cohens_d'] = cohens_d
+
     if permute:
         df['np_t_w_null'] = np_t_w_null
         df['np_t_w_null'] = np_t_w_null
-    
-    df.dropna(inplace=True)
-    # df['t_shrnk_glob'] = np.vectorize(t_welch)(df['pos_n'], df['neg_n'], 
-                                               # df['pos_mu'], df['neg_mu'], 
-                                               # df['pos_var'], df['neg_var'], 
-                                               # meanVar(expdf))
-    
-    right = expdf.rename_axis('exp', axis=0) 
-    right['gene_var_exp'] = right.var(axis=1)
-    right = right.reset_index()
-    
-    df = pd.merge(df, right[['exp','gene_var_exp']], on='exp')
-    
-    if cat_df:
-        return pd.concat([cat_df, df])
         
-    return df
+    return df.dropna()
 
 
 from scipy.stats import pearsonr
@@ -789,8 +869,6 @@ def sample_by_loc(df, chr_num, arm='p', pos_sort=True):
         return df[df['chr'] == chr_num].sort_values(by='chromosome')
     
     return df[df['chr'] == chr_num]
-
-
 
 
 def prepare_vv(exp, cnv, cloves, sig=0.01):
@@ -1058,8 +1136,7 @@ def plot_exp_dist(tupe):
     print(pos_exp.var(),neg_exp.var())
     
     
-    
-def graph_real_vs_null(clovedf, tissue):
+def graph_real_vs_null(clovedf, tissue, ks_x=30, ks_y=.32):
     """
     graphs real vs null kde plot with statistic
     
@@ -1076,13 +1153,14 @@ def graph_real_vs_null(clovedf, tissue):
     plt.title('separation of computed real and null cloves: '+tissue)
     plt.legend()
     ks = stats.ks_2samp(clovedf['np_t_w_null'], clovedf['np_t_w'])
-    plt.text(30, .35, 'ks='+str(round(ks.statistic, 2)))
+    plt.text(ks_x, ks_y, 'ks='+str(round(ks.statistic, 2)))
     if ks.pvalue < 0.001:
-        plt.text(30, .32, 'p<0.001')
+        plt.text(ks_x, ks_y-0.02, 'p<0.001')
     else:
-        plt.text(30, .32, 'p='+str(round(ks.pvalue, 2)))
+        plt.text(ks_x, ks_y-0.02, 'p='+str(round(ks.pvalue, 2)))
     
     sns.despine()
+
     
 def graph_chrom_interaction_map(df_piv, tissue='breast',chr_loc='chr1p', similarity_score='pearson', save=True):
     """
