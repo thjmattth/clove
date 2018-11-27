@@ -67,7 +67,7 @@ def tcgaTissueSelect(samp_list, samp_name, cnv_df, exp_df, save=False):
 
 # subsample exp and cnv dfs by tissue (lung) and histolgical subtype (sclc, adno, sqms)
 
-def ccleTissueSelect(expdf_fn, cnvdf_fn, celldf_fn, tissue, subtype, out_dir=''):
+def ccleTissueSelect(expdf_fn, cnvdf_fn, celldf_fn, tissue, subtype=False, out_dir=''):
     """
     separates samples by subtype returns subsampled df (and pickles them for later!)
     
@@ -85,8 +85,12 @@ def ccleTissueSelect(expdf_fn, cnvdf_fn, celldf_fn, tissue, subtype, out_dir='')
     exp = pd.read_pickle(expdf_fn)
     cnv = pd.read_pickle(cnvdf_fn)
     celldf = pd.read_pickle(celldf_fn)
+    tissue = tissue.upper()
     
-    cells = celldf.loc[(celldf['Hist Subtype1'] == subtype) & (celldf['Site Primary'] == tissue)].index
+    if subtype:
+        cells = celldf.loc[(celldf['Hist Subtype1'] == subtype) & (celldf['Site Primary'] == tissue)].index
+    else:
+        cells = celldf.loc[celldf['Site Primary'] == tissue].index
     exp = exp[list(set(cells).intersection(exp.columns))]
     cnv = cnv[list(set(cells).intersection(cnv.columns))]
     
