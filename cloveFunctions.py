@@ -159,6 +159,7 @@ def graph_var_dist(df, tissue, y0=0.5, yd=0.05):
         sig_label = '{}sig={}, n={}'.format(str(x), str(sig), str(n))
         plt.text(sig, y0, sig_label)
         y0 -= yd
+        
     sns.despine()
     plt.title('variance in {} expression, (genes={}, samples={})\n'.format(tissue, df.shape[0], df.shape[1]))
     plt.show()
@@ -520,7 +521,7 @@ def allPairContextStat(expdf, cnvdf, nan_style='omit', permute=False, save='data
         else:
             permute = 'cnv'
             cmask_n = scrambleDF(cmask)
-        
+    d = []    
     comparisons = len(expdf.index) * len(cnvdf.index)
     print('attempting {} comparisons with current parameters'.format(comparisons))
     count=0
@@ -534,24 +535,28 @@ def allPairContextStat(expdf, cnvdf, nan_style='omit', permute=False, save='data
             pos = np.array(expdf.loc[n[0]][cmask_n.loc[n[1]]])
             neg = np.array(expdf.loc[n[0]][~cmask_n.loc[n[1]]])
             t_n, p_n = stats.ttest_ind(pos, neg, nan_policy=nan_style, equal_var=True)
-        if permute=='exp':
+            d.append({'count': count, 'exp': n[0], 'cnv':n[1], 'np_t_w':t, 'np_p_w':t,'np_t_w_null':t_n})
+        elif permute=='exp':
             pos = np.array(expdf_n.loc[n[0]][cmask.loc[n[1]]])
             neg = np.array(expdf_n.loc[n[0]][~cmask.loc[n[1]]])
             t_n, p_n = stats.ttest_ind(pos, neg, nan_policy=nan_style, equal_var=True)
-    
-        
-        results = [count, n[0], n[1], t, p, t_n, p_n]
+            d.append({'count': count, 'exp': n[0], 'cnv':n[1], 'np_t_w':t, 'np_p_w':t,'np_t_w_null':t_n})
+        else: 
+            d.append({'count': count, 'exp': n[0], 'cnv':n[1], 'np_t_w':t, 'np_p_w':t})
             
         # counter
         count+=1
+        print(count)
+        if count == 10:
+            break
         if count%(comparisons/10)==0:
             percent_complete+=10
             print('pair computation {}% complete ({}/{})'.format(percent_complete, count, comparisons))
     
-    
-    
-    
-    
+    df = pd.DataFrame(d)
+    if save:
+        df.to_csv(save, sep='\t', index_col=0, compression='gzip')
+    return df
 
 
 # In[36]:
