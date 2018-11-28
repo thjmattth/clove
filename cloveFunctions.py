@@ -67,7 +67,7 @@ def tcgaTissueSelect(samp_list, samp_name, cnv_df, exp_df, save=False):
 
 # subsample exp and cnv dfs by tissue (lung) and histolgical subtype (sclc, adno, sqms)
 
-def ccleTissueSelect(expdf_fn, cnvdf_fn, celldf_fn, tissue, subtype=False, out_dir=''):
+def ccleTissueSelect(expdf_fn, cnvdf_fn, celldf_fn, tissue, subtype=False, out_dir=False):
     """
     separates samples by subtype returns subsampled df (and pickles them for later!)
     
@@ -75,7 +75,7 @@ def ccleTissueSelect(expdf_fn, cnvdf_fn, celldf_fn, tissue, subtype=False, out_d
     :param cnvdf_fn: str, filename revealer expression calls, (CCLE_DEL_calls.pickle)
     :param celldf_fn: str filename of pickled CCLE cell info df (ccle_cell_info_df.pickle)
     :param tissue: str, name of primary site matching CCLE cell info file
-    :param subtype: str, name of histological subtype mathcing CCLE cell info file
+    :param subtype: str, name of histological subtype mathcing CCLE cell info file (default to False/ignore)
     :param outdir: str, name of directory to drop pickled dfs, (clove/dichotomy_*sample*V*sample*)
     
     returns expression df, copy call df
@@ -85,19 +85,23 @@ def ccleTissueSelect(expdf_fn, cnvdf_fn, celldf_fn, tissue, subtype=False, out_d
     exp = pd.read_pickle(expdf_fn)
     cnv = pd.read_pickle(cnvdf_fn)
     celldf = pd.read_pickle(celldf_fn)
-    tissue = tissue.upper()
+    tissue = tissue.lower()
     
     if subtype:
         cells = celldf.loc[(celldf['Hist Subtype1'] == subtype) & (celldf['Site Primary'] == tissue)].index
+        out_fn = tissue + '_' + subtype
     else:
         cells = celldf.loc[celldf['Site Primary'] == tissue].index
+        out_fn = tissue
+    
     exp = exp[list(set(cells).intersection(exp.columns))]
     cnv = cnv[list(set(cells).intersection(cnv.columns))]
     
-    exp.to_pickle(out_dir+'_'.join([tissue,subtype,'exp','df'])+'.p')
-    cnv.to_pickle(out_dir+'_'.join([tissue,subtype,'cnv','df'])+'.p')
+    if out_dir:
+        exp.to_pickle(out_dir+'_'.join([out_fn,'exp','df.p']))
+        cnv.to_pickle(out_dir+'_'.join([out_fn,'cnv','df.p']))
     
-    return (exp, cnv)
+    return exp, cnv
 
 
 def subset_by_tissue(df, tissue=None, casedf='data/tcga_cases.20181026.tab.gz', trunc_id=False):
@@ -180,6 +184,33 @@ def graph_n_dist(df, tissue, y0=0.5, yd=0.05):
     
     returns None, just displays a plot"""
     n_arr = df.sum(axis=1)
+    sns.set_style("white")
+    plt.xlabel('n')
+    sns.distplot(n_arr, color='black', hist=False)
+
+    for x in range (1,4):
+        sig=round(np.std(n_arr)*x+np.mean(n_arr), 2)
+        n=df[df.sum(axis=1) > sig].shape[0]
+        plt.plot([sig,sig], [y0, 0], linestyle='dotted', color='gray')
+        sig_label = '{}sig={}, n={}'.format(str(x), str(int(round(sig, 0))), str(n))
+        plt.text(sig, y0, sig_label)
+        y0 -= yd
+    sns.despine()
+    plt.title('n of +/-bait in {} copy number, (genes={}, samples={})\n'.format(tissue, df.shape[0], df.shape[1]))
+    plt.show()
+    
+    
+def graph_n_ratio(df, tissue, y0=1000, yd=100):
+    """
+    plots split number (n) of +/-bait contexts in the raw cnvdf before you decide how to filter
+    
+    :param df: pandas dataframe, raw copy number dataframe gene x sample
+    :param tissue: str, name of tissue or cohort of interest, just for labeling
+    :param y0: float, top of sig line and label
+    :param yd: float, how much y0 should decrease to fit subsequent sig below it
+    
+    returns None, just displays a plot"""
+    n_arr = df.sum(axis=1)/(df.shape[0]-df.sum(axis=1))  # ratio of + context : - context
     sns.set_style("white")
     plt.xlabel('n')
     sns.distplot(n_arr, color='black', hist=False)
