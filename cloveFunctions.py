@@ -173,12 +173,34 @@ def graph_var_dist(df, tissue, y0=0.5, yd=0.05):
     plt.show()
     
     
-def graph_n_dist(df, tissue, y0=0.5, yd=0.05):
+def set_yloc(arr, yloc, y0=0.5, yd=0.05):
+    """
+    sets appropriate height for stdev labels in plotting funcs called in load_data
+    
+    :param arr: np.array, calculating histrogram y-max 
+    :param yloc: str, option to "auto"matically scale, or say "manual" and set y0 and yd yourself
+    :param y0: float, top of sig line and label
+    :param yd: float, how much y0 should decrease to fit subsequent sig below it
+    
+    returns adjusted y0, yd
+    """
+    if yloc=='auto':
+        y = plt.hist(arr)[1]
+#         print(np.histogram(arr)[0].max(),len(arr))
+#         y = np.histogram(arr)[0]/len(np.histogram(arr)[0])
+        return y.max(), y.max()/10
+    elif yloc=='manual':
+        return y0, yd
+    else: raise ValueError('specify either "auto" or "manual" for param yloc')
+
+
+def graph_n_dist(df, tissue, yloc='auto', y0=0.10, yd=0.02):
     """
     plots distribution of number (n) of +/-bait contexts in the raw cnvdf before you decide how to filter
     
     :param df: pandas dataframe, raw copy number dataframe gene x sample
     :param tissue: str, name of tissue or cohort of interest, just for labeling
+    :param yloc: str, option to "auto"matically scale, or say "manual" and set y0 and yd yourself
     :param y0: float, top of sig line and label
     :param yd: float, how much y0 should decrease to fit subsequent sig below it
     
@@ -186,7 +208,11 @@ def graph_n_dist(df, tissue, y0=0.5, yd=0.05):
     n_arr = df.sum(axis=1)
     sns.set_style("white")
     plt.xlabel('n')
-    sns.distplot(n_arr, color='black', hist=False)
+    print('mean: ', np.mean(n_arr))
+    print('std: ', np.std(n_arr))
+    sns.distplot(n_arr, color='black', hist=False, kde=True)
+    
+    y0, yd = set_yloc(n_arr, yloc, y0, yd)
 
     for x in range (1,4):
         sig=round(np.std(n_arr)*x+np.mean(n_arr), 2)
@@ -211,6 +237,8 @@ def graph_n_ratio(df, tissue, y0=1000, yd=100):
     
     returns None, just displays a plot"""
     n_arr = df.sum(axis=1)/(df.shape[0]-df.sum(axis=1))  # ratio of + context : - context
+    print('mean: ', np.mean(n_arr))
+    print('std: ', np.std(n_arr))
     sns.set_style("white")
     plt.xlabel('n')
     sns.distplot(n_arr, color='black', hist=False)
