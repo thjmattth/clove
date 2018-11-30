@@ -88,12 +88,13 @@ def ccleTissueSelect(expdf_fn, cnvdf_fn, celldf_fn, tissue, subtype=False, out_d
     tissue = tissue.lower()
     
     if subtype:
-        cells = celldf.loc[(celldf['Hist Subtype1'] == subtype) & (celldf['Site Primary'] == tissue)].index
+        cells = celldf[(celldf['Hist Subtype1'] == subtype) & (celldf['Site Primary'] == tissue)].index
         out_fn = tissue + '_' + subtype
     else:
-        cells = celldf.loc[celldf['Site Primary'] == tissue].index
+        cells = celldf[celldf['Site Primary'] == tissue].index
         out_fn = tissue
-    
+    print(exp.columns)
+    print(cnv.columns)
     exp = exp[list(set(cells).intersection(exp.columns))]
     cnv = cnv[list(set(cells).intersection(cnv.columns))]
     
@@ -194,7 +195,7 @@ def set_yloc(arr, yloc, y0=0.5, yd=0.05):
     else: raise ValueError('specify either "auto" or "manual" for param yloc')
 
 
-def graph_n_dist(df, tissue, yloc='auto', y0=0.10, yd=0.02):
+def graph_n_dist(df, tissue, yloc='manual', y0=0.10, yd=0.02):
     """
     plots distribution of number (n) of +/-bait contexts in the raw cnvdf before you decide how to filter
     
@@ -423,9 +424,6 @@ def mainFitler(expdf, cnvdf, var=0.2, n=5, extra_info=False, amp_fh=False, dele_
     
     return (expdf, cnvdf)
 
-####################################################################################################
-### GRAPHING TOOLS
-
 
 def calcstats(_df, list1, list2, list1name='ipl_avg_TC', list2name='ipl_avg_nonTC'):
     df = _df.copy()
@@ -625,6 +623,92 @@ def allPairContextStat(expdf, cnvdf, nan_style='omit', permute=False, save='data
 # In[36]:
 
 # randomly select 10000 cnv and exp genes to form 10000 pairs
+
+
+def matchPairContextStat(expdf, cnvdf, new_cohort, matchdf, match_cohort, nan_style='omit', min_var=2, min_n=2, permute=False, _test=False):
+    """
+    computes clove pairs from one sample that match with those computed in some other cohorts
+    
+    :param expdf: pandas dataframe, expression by sample 
+                    (hopefully filtered with mainFilter, tissue specific, with matching samples in cnv)
+    :param cnvdf: pandas dataframe, binarized mask 5(1=delete, 0=nodelete) deletion by sample 
+                    (hopefully filtered with mainFilter, tissue specific, with matching samples in exp)
+    :param new_cohort: str, identifier for the current cohort computation (eg, tissue origin of exp and cnv)
+    :param matchdf: pandas dataframe, results of clove computation performed in other cohort
+                    exp and cnv pairs will be used to populate the new clove results so pairs match between cohort
+    :param match_cohort: str, identifier for the matching (precomputed) cohort used (eg, tissue origin of matchdf)
+    :param nan_style: str, how the stats.ttest_ind treats NANs, {‘propagate’, ‘raise’, ‘omit’}
+    :param permute: bool, True will calculate pairs with randomly permuted expression matrix as null model
+    
+    returns df[['exp', 'cnv', 'cntxt_pos_mu', 'cntxt_neg_mu', 
+                'cntxt_pos_var', 'cntxt_neg_var', 
+                'cntxt_pos_n', 'cntxt_neg_n']]
+    """
+    
+    cells = list(set(cnvdf.columns).intersection(expdf.columns))
+    expdf = expdf[cells]
+    cmask = cnvdf[cells] == 1
+
+    if permute:
+        cmask_n = scrambleDF(cmask)
+    
+    np_t_w, np_p_w, np_t_w_null = [], [], []
+
+    df = matchdf[['exp', 'cnv', 'np_t_w', 'np_t_w_null','np_p_w']]
+    df.columns = ['exp', 'cnv', 't_'+match_cohort, 't_null_'+match_cohort, 'p_'+match_cohort]
+    df = df[(df['exp'].isin(expdf.index)) & (df['cnv'].isin(cnvdf.index))]
+    print('attempting {} comparisons referenced from {} (var>{}, n>{}'.format(df.shape[0], match_cohort, min_var, min_n))
+
+    if _test:
+        df = df.sample(_test)
+    
+    # progress initialize
+    count=0
+    percent_complete=0
+    comparisons = df.shape[0]
+
+    for row in df.itertuples():
+        # progress report
+        count+=1
+        if count%(round(comparisons,-1)/10)==0:
+            percent_complete+=10
+            print('pair computation {}% complete ({}/{})'.format(percent_complete, count, comparisons))
+
+        # mask cnv contexts onto expression data
+        pos = np.array(expdf.loc[row.exp][cmask.loc[row.cnv]])
+        neg = np.array(expdf.loc[row.exp][~cmask.loc[row.cnv]])
+
+        if ((~np.isnan(pos)).sum() > min_n) &  ((~np.isnan(neg)).sum() > min_n):
+            # calculate t_stat, welch
+            t, p = stats.ttest_ind(pos, neg, nan_policy=nan_style, equal_var=True)
+            np_t_w.append(t)
+            np_p_w.append(p)
+        else:    
+            np_t_w.append(np.nan)
+            np_p_w.append(np.nan)
+
+        if permute:
+            pos = np.array(expdf.loc[row.exp][cmask_n.loc[row.cnv]])
+            neg = np.array(expdf.loc[row.exp][~cmask_n.loc[row.cnv]])
+            if ((~np.isnan(pos)).sum() > min_n) &  ((~np.isnan(neg)).sum() > min_n):
+                # calculate t_stat, welch
+                t, p = stats.ttest_ind(pos, neg, nan_policy=nan_style, equal_var=True)
+                np_t_w_null.append(t)
+            else:    
+                np_t_w_null.append(np.nan)
+   
+    df['t_'+new_cohort] = np_t_w
+    df['p_'+new_cohort] = np_p_w
+    
+    print(count)
+    
+    if permute:
+        df['t_null_'+new_cohort] = np_t_w_null
+        return df
+        
+    else:
+        return df[['exp', 'cnv', 't_'+match_cohort, 'p_'+match_cohort, 't_'+new_cohort, 'p_'+new_cohort]]
+
 
 def explicitPairContextStat(expdf, cnvdf, exp_lis=False, cnv_lis=False, cat_df=False, nan_style='omit', permute=False):
     """
