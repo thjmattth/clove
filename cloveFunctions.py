@@ -8,6 +8,7 @@ warnings.filterwarnings('ignore')
 import os
 import pandas as pd
 import numpy as np
+import datetime
 import itertools
 import seaborn as sns
 import matplotlib
@@ -20,7 +21,6 @@ from scipy.stats import ks_2samp
 from scipy.stats import probplot
 import statsmodels.api as sm
 import statsmodels.stats.power as smp
-import pylab
 from scipy.spatial.distance import pdist, squareform
 from scipy.cluster.hierarchy import linkage, dendrogram
 matplotlib.rcParams['figure.figsize'] = (20.0, 10.0)
@@ -710,7 +710,7 @@ def matchPairContextStat(expdf, cnvdf, new_cohort, matchdf, match_cohort, nan_st
         return df[['exp', 'cnv', 't_'+match_cohort, 'p_'+match_cohort, 't_'+new_cohort, 'p_'+new_cohort]]
 
 
-def explicitPairContextStat(expdf, cnvdf, exp_lis=False, cnv_lis=False, cat_df=False, nan_style='omit', permute=False):
+def explicitPairContextStat(expdf, cnvdf, exp_lis=False, cnv_lis=False, cat_df=False, nan_style='omit', min_n=5, min_v=2, permute=False):
     """
     takes exp and cnv genes (either all or explicitand returns pair summary statistics
     
@@ -723,13 +723,21 @@ def explicitPairContextStat(expdf, cnvdf, exp_lis=False, cnv_lis=False, cat_df=F
     :param exp_lis: list of str, HUGO gene names in cnvdf to restrict to, default is False (use all genes in cnvdf)
     :param in_df: pandas dataframe, previous calculations to concat new results to, used in while loop to get n_samp
     :param nan_style: str, how the stats.ttest_ind treats NANs, {‘propagate’, ‘raise’, ‘omit’}
+    :param min_n: int, minimum length of array (n) needed for t-test calculation, defualt=5
+    :param min_v: int, minimum variance of array (v) needed for t-test calculation, default=2
     :param permute: bool, True will calculate pairs with randomly permuted expression matrix as null model
     
-    returns df[['exp', 'cnv', 'cntxt_pos_mu', 'cntxt_neg_mu', 
-                'cntxt_pos_var', 'cntxt_neg_var', 
-                'cntxt_pos_n', 'cntxt_neg_n']]
+    returns df[['exp', 'cnv', 'np_t_w', 'np_p_w', 'np_t_w_null', 'np_p_w_null']]
+            where:  exp=expression (prey) gene name
+                    cnv=copy number (bait) gene name
+                    np_t_w=computed welch t-test
+                    np_p_w=computed p value from t-test
+                    np_t_w_null=computed welch t-test of background dist (only if permute=True)
+                    np_p_w_null=computed p value from t-test of background dist (only if permute=True)
+                        
     """
-    
+    start = datetime.datetime.now()
+    exp, cnv, np_t_w, np_p_w, np_t_w_null, np_p_w_null = [], [], [],[], [], []
     cells = list(set(cnvdf.columns).intersection(expdf.columns))
     expdf = expdf[cells]
     cmask = cnvdf[cells] == 1
@@ -751,78 +759,65 @@ def explicitPairContextStat(expdf, cnvdf, exp_lis=False, cnv_lis=False, cat_df=F
                 print('{} not found in cnvdf.index.  Omitted'.format(gene))
     else:
         cnv_samp = cnvdf.index
-    print('attempting {} comparisons with current parameters'.format(len(exp_samp) * len(cnv_samp)))
-    r={'exp':[],'cnv':[]}
+    comparisons = len(exp_samp) * len(cnv_samp)
+    approx_time = round(comparisons/26703, -1)  # found experimentally to be 26703 computations per minute
+    print('attempting {} comparisons with current parameters\nestimated duration: {}min'.format(comparisons, approx_time))
+
+    # progress initialize
+    count=0
+    percent_complete=0
     for pair in itertools.product(exp_samp, cnv_samp):
-        r['exp'].append(pair[0])
-        r['cnv'].append(pair[1])
-    df = pd.DataFrame(r)
-    
-    pos_n, neg_n, = [], []
-    pos_mu, neg_mu = [], []
-    pos_var, neg_var = [], []
-    cohens_d = []
-    np_t_s, np_p_s = [], []
-    np_t_w, np_p_w = [], []
-    np_t_w_null, np_p_w_null = [], []
-  
-    
-    for row in df.itertuples():
-        # mask cnv contexts onto expression data
-        pos = np.array(expdf.loc[row.exp][cmask.loc[row.cnv]])
-        neg = np.array(expdf.loc[row.exp][~cmask.loc[row.cnv]])
-        
-        # calculate n
-        pos_n.append(len(pos))
-        neg_n.append(len(neg))
-        
-        # calculate mu
-        pos_mu.append(pos.mean())
-        neg_mu.append(neg.mean())
-        
-        # calculate var
-        pos_var.append(pos.var())
-        neg_var.append(neg.var())
-        
-        # calculate cohen's d
-        cohens_d.append(cohenD(pos, neg))
-        
-        # calculate t_stat, welch
-        t, p = stats.ttest_ind(pos, neg, nan_policy=nan_style, equal_var=True)
-        
+        exp_gene, cnv_gene = pair[0], pair[1]
+        exp.append(exp_gene)
+        cnv.append(cnv_gene)
+
+        # progress report
+        count+=1
+        if count%(round(comparisons,-1)/10)==0:
+            percent_complete+=10
+            print('pair computation {}% complete ({}/{})'.format(percent_complete, count, comparisons))
+
+        pos = np.array(expdf.loc[exp_gene][cmask.loc[cnv_gene]])
+        neg = np.array(expdf.loc[exp_gene][~cmask.loc[cnv_gene]])
+
+        if ((~np.isnan(pos)).sum() > min_n) &  ((~np.isnan(neg)).sum() > min_n):
+            # calculate t_stat, welch
+            t, p = stats.ttest_ind(pos, neg, nan_policy=nan_style, equal_var=True)
+            np_t_w.append(t)
+            np_p_w.append(p)
+        else:    
+            np_t_w.append(np.nan)
+            np_p_w.append(np.nan)
+
         if permute:
             pos = np.array(expdf.loc[row.exp][cmask_n.loc[row.cnv]])
             neg = np.array(expdf.loc[row.exp][~cmask_n.loc[row.cnv]])
-            t, p = stats.ttest_ind(pos, neg, nan_policy=nan_style, equal_var=True)
-            np_t_w_null.append(t)
-            np_p_w_null.append(p)
-            
-    df['pos_n'] = pos_n
-    df['neg_n'] = neg_n
-    df['pos_mu'] = pos_mu
-    df['neg_mu'] = neg_mu
-    df['pos_var'] = pos_var
-    df['neg_var'] = neg_var
-    df['cohens_d'] = cohens_d
+            if ((~np.isnan(pos)).sum() > min_n) &  ((~np.isnan(neg)).sum() > min_n):
+                # calculate t_stat, welch
+                t, p = stats.ttest_ind(pos, neg, nan_policy=nan_style, equal_var=True)
+                np_t_w_null.append(t)
+            else:    
+                np_t_w_null.append(np.nan)
+    df = pd.DataFrame({'exp':exp,'cnv':cnv})
     df['np_t_w'] = np_t_w
     df['np_p_w'] = np_p_w
     
+    total = breast_results.shape[0]
+    non_na = breast_results.dropna().shape[0]
+    na = total - non_na
+    print('{} attempted comparisons: {} non-NaN, {} NaN values'.format(total, non_na, na))
+    
+    end = datetime.datetime.now()
+    duration = round((end - start).total_seconds()/60, 2)
+    print('Actual duration: {}'.format(duration))
     if permute:
         df['np_t_w_null'] = np_t_w_null
         df['np_p_w_null'] = np_p_w_null
-    
-    df.dropna(inplace=True)
-
-    right = expdf.rename_axis('exp', axis=0) 
-    right['gene_var_exp'] = right.var(axis=1)
-    right = right.reset_index()
-    
-    df = pd.merge(df, right[['exp','gene_var_exp']], on='exp')
-    
-    if cat_df:
-        return pd.concat([cat_df, df])
+        return df
         
-    return df
+    else:
+        return df
+
     
 
 def randomPairContextStat(n_samp, expdf, cnvdf, verbose=False, cat_df=False, nan_style='omit', permute=False):
