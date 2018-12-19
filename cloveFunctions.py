@@ -48,6 +48,7 @@ def tcgaTissueSelect(samp_list, samp_name, cnv_df, exp_df, save=False):
 
     # list of intersecting IDs whose first 12 match the IDs in a tissue
     samples = list(set(c_samples).intersection(e_samples))
+    print('{} matching samples incommon between cnv and rna'.format(len(samples)))
 
     # slice down all IDs of DFs so they can match
     cnv_df.columns = [col[:16] for col in cnv_df.columns]
@@ -802,8 +803,8 @@ def explicitPairContextStat(expdf, cnvdf, exp_lis=False, cnv_lis=False, cat_df=F
     df['np_t_w'] = np_t_w
     df['np_p_w'] = np_p_w
     
-    total = breast_results.shape[0]
-    non_na = breast_results.dropna().shape[0]
+    total = df.shape[0]
+    non_na = df.dropna().shape[0]
     na = total - non_na
     print('{} attempted comparisons: {} non-NaN, {} NaN values'.format(total, non_na, na))
     
