@@ -210,8 +210,6 @@ def graph_n_dist(df, tissue, yloc='manual', y0=0.10, yd=0.02):
     n_arr = df.sum(axis=1)
     sns.set_style("white")
     plt.xlabel('n')
-    print('mean: ', np.mean(n_arr))
-    print('std: ', np.std(n_arr))
     sns.distplot(n_arr, color='black', hist=False, kde=True)
     
     y0, yd = set_yloc(n_arr, yloc, y0, yd)
@@ -711,7 +709,7 @@ def matchPairContextStat(expdf, cnvdf, new_cohort, matchdf, match_cohort, nan_st
         return df[['exp', 'cnv', 't_'+match_cohort, 'p_'+match_cohort, 't_'+new_cohort, 'p_'+new_cohort]]
 
 
-def explicitPairContextStat(expdf, cnvdf, exp_lis=False, cnv_lis=False, cat_df=False, nan_style='omit', min_n=5, min_v=2, permute=False):
+def explicitPairContextStat(expdf, cnvdf, exp_lis=False, cnv_lis=False, ziplist=False, cat_df=False, nan_style='omit', min_n=5, min_v=2, permute=False):
     """
     takes exp and cnv genes (either all or explicitand returns pair summary statistics
     
@@ -721,7 +719,8 @@ def explicitPairContextStat(expdf, cnvdf, exp_lis=False, cnv_lis=False, cat_df=F
     :param cnvdf: pandas dataframe, binarized mask 5(1=delete, 0=nodelete) deletion by sample 
                     (hopefully filtered with mainFilter, tissue specific, with matching samples in exp)
     :param exp_lis: list of str, HUGO gene names in expdf to restrict to, default is False (use all genes in expdf)
-    :param exp_lis: list of str, HUGO gene names in cnvdf to restrict to, default is False (use all genes in cnvdf)
+    :param cnv_lis: list of str, HUGO gene names in cnvdf to restrict to, default is False (use all genes in cnvdf)
+    :param ziplist: bool, True zips together exp_lis and cnv_lis by index into pair, default is False (all pair combos) 
     :param in_df: pandas dataframe, previous calculations to concat new results to, used in while loop to get n_samp
     :param nan_style: str, how the stats.ttest_ind treats NANs, {‘propagate’, ‘raise’, ‘omit’}
     :param min_n: int, minimum length of array (n) needed for t-test calculation, defualt=5
@@ -745,29 +744,51 @@ def explicitPairContextStat(expdf, cnvdf, exp_lis=False, cnv_lis=False, cat_df=F
     if permute:
         cmask_n = scrambleDF(cmask)
     
-    if type(exp_lis) != bool:
-        exp_samp = set(expdf.index).intersection(exp_lis)
-        for gene in exp_lis:
-            if gene not in expdf.index:
-                print('{} not found in expdf.index.  Omitted'.format(gene))
-    else:
-        exp_samp = expdf.index
+    if ziplist == False:
+        if type(exp_lis) != bool:
+            exp_samp = set(expdf.index).intersection(exp_lis)
+            for gene in exp_lis:
+                if gene not in expdf.index:
+                    print('{} not found in expdf.index.  Omitted'.format(gene))
+        else:
+            exp_samp = expdf.index
+
+        if type(cnv_lis) != bool:
+            cnv_samp = set(cnvdf.index).intersection(cnv_lis)
+            for gene in cnv_lis:
+                if gene not in cnvdf.index:
+                    print('{} not found in cnvdf.index.  Omitted'.format(gene))
+        else:
+            cnv_samp = cnvdf.index
+        comparisons = len(exp_samp) * len(cnv_samp)
+        pair_iterable = itertools.product(exp_samp, cnv_samp)
     
-    if type(cnv_lis) != bool:
-        cnv_samp = set(cnvdf.index).intersection(cnv_lis)
-        for gene in cnv_lis:
-            if gene not in cnvdf.index:
-                print('{} not found in cnvdf.index.  Omitted'.format(gene))
     else:
-        cnv_samp = cnvdf.index
-    comparisons = len(exp_samp) * len(cnv_samp)
+        if len(exp_lis) != len(cnv_lis):
+            print('list mismatch: cannot perform zip.  Shutting down.')
+            return
+        else:
+            pair_iterable = []
+            omit_count = 0
+            for pair in list(zip(exp_lis, cnv_lis)):
+                if pair[0] not in expdf.index:
+                    print('{} not found in expdf.index.  {}:{} Omitted'.format(pair[0],pair[0],pair[1]))
+                    omit_count += 1
+                elif pair[1] not in cnvdf.index:
+                    print('{} not found in cnvdf.index.  {}:{} Omitted'.format(pair[1],pair[0],pair[1]))
+                    omit_count += 1
+                else:
+                    pair_iterable.append(pair)
+        print('{} total comparisons omitted!'.format(omit_count))
+        comparisons = len(pair_iterable)         
+    
     approx_time = round(comparisons/26703, -1)  # found experimentally to be 26703 computations per minute
     print('attempting {} comparisons with current parameters\nestimated duration: {}min'.format(comparisons, approx_time))
 
     # progress initialize
     count=0
     percent_complete=0
-    for pair in itertools.product(exp_samp, cnv_samp):
+    for pair in pair_iterable:
         exp_gene, cnv_gene = pair[0], pair[1]
         exp.append(exp_gene)
         cnv.append(cnv_gene)
