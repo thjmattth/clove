@@ -709,7 +709,7 @@ def matchPairContextStat(expdf, cnvdf, new_cohort, matchdf, match_cohort, nan_st
         return df[['exp', 'cnv', 't_'+match_cohort, 'p_'+match_cohort, 't_'+new_cohort, 'p_'+new_cohort]]
 
 
-def explicitPairContextStat(expdf, cnvdf, exp_lis=False, cnv_lis=False, ziplist=False, cat_df=False, nan_style='omit', min_n=5, min_v=2, permute=False):
+def explicitPairContextStat(expdf, cnvdf, exp_lis=False, cnv_lis=False, ziplist=False, cat_df=False, nan_style='omit', min_n=5, min_v=2, permute=False, status=True):
     """
     takes exp and cnv genes (either all or explicitand returns pair summary statistics
     
@@ -726,6 +726,7 @@ def explicitPairContextStat(expdf, cnvdf, exp_lis=False, cnv_lis=False, ziplist=
     :param min_n: int, minimum length of array (n) needed for t-test calculation, defualt=5
     :param min_v: int, minimum variance of array (v) needed for t-test calculation, default=2
     :param permute: bool, True will calculate pairs with randomly permuted expression matrix as null model
+    :param status: bool, True will print progress status (in quantiles) and False will not
     
     returns df[['exp', 'cnv', 'np_t_w', 'np_p_w', 'np_t_w_null', 'np_p_w_null']]
             where:  exp=expression (prey) gene name
@@ -780,10 +781,12 @@ def explicitPairContextStat(expdf, cnvdf, exp_lis=False, cnv_lis=False, ziplist=
                 else:
                     pair_iterable.append(pair)
         print('{} total comparisons omitted!'.format(omit_count))
+        print('starting (exp, cnv) pair comparison: {} to {}'.format(str(pair_iterable[0]), str(pair_iterable[1])))
         comparisons = len(pair_iterable)         
     
     approx_time = round(comparisons/26703, -1)  # found experimentally to be 26703 computations per minute
-    print('attempting {} comparisons with current parameters\nestimated duration: {}min'.format(comparisons, approx_time))
+    if status:
+        print('attempting {} comparisons with current parameters\nestimated duration: {}min'.format(comparisons, approx_time))
 
     # progress initialize
     count=0
@@ -797,7 +800,7 @@ def explicitPairContextStat(expdf, cnvdf, exp_lis=False, cnv_lis=False, ziplist=
         count+=1
         if count%(round(comparisons,-1)/10)==0:
             percent_complete+=10
-            print('pair computation {}% complete ({}/{})'.format(percent_complete, count, comparisons))
+            if status:
 
         pos = np.array(expdf.loc[exp_gene][cmask.loc[cnv_gene]])
         neg = np.array(expdf.loc[exp_gene][~cmask.loc[cnv_gene]])
