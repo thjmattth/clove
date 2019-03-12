@@ -801,6 +801,7 @@ def explicitPairContextStat(expdf, cnvdf, exp_lis=False, cnv_lis=False, ziplist=
         if count%(round(comparisons,-1)/10)==0:
             percent_complete+=10
             if status:
+                print('pair computation {}% complete ({}/{})'.format(percent_complete, count, comparisons))
 
         pos = np.array(expdf.loc[exp_gene][cmask.loc[cnv_gene]])
         neg = np.array(expdf.loc[exp_gene][~cmask.loc[cnv_gene]])
