@@ -1092,7 +1092,7 @@ def vulnerability_vector_count(exp, cnv, hits):
     return pat_essential.astype(np.int32)
 
 
-def correlate_df_cols(df_1, df_2, comb=False):
+def correlate_df_cols(df_1, df_2, comb=False, perm=False):
     """
     finds pearson coefficient between columns of two pandas dataframes
     
@@ -1101,6 +1101,9 @@ def correlate_df_cols(df_1, df_2, comb=False):
     :param comb: bool, changes how/which column comparisons are made:
                     True: correlation between all combinations of cols
                     False: correlation between matching column headers (default)
+    :param perm: bool, permute the cell order in df1 so as to destroy cell-to-cell comparision
+                    True: permutes column headers with df1, null dist
+                    False: keeps df1 column headers in natural order, preserves cell-to-cell comparisons (default)
     
     returns pandas dataframe of correlations
     """
@@ -1109,6 +1112,11 @@ def correlate_df_cols(df_1, df_2, comb=False):
     labels = idx_1.intersection(idx_2)
     df_1, df_2 = df_1.loc[labels], df_2.loc[labels]
     cldeg, dep_breast = df_1, df_2
+    
+    if perm:
+        df_1_cols = np.array(df_1.columns)
+        np.random.shuffle(df_1_cols)
+        df_1.columns=df_1_cols
     
     if comb:
         cldeg_depBreast_corr = [['sample','cell','pear_coeff','p_val']]
@@ -1175,11 +1183,6 @@ def hire_clust(df, fig_fh=False):
     else:
         plt.show()
 
-
-
-# In[74]:
-
-# randomly select 10000 cnv and exp genes to form 10000 pairs
 
 def stack_process(fh, score='pearson', diff='same_group?'):
     '''
