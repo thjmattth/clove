@@ -1092,7 +1092,7 @@ def vulnerability_vector_count(exp, cnv, hits):
     return pat_essential.astype(np.int32)
 
 
-def correlate_df_cols(df_1, df_2, comb=False, perm=False):
+def correlate_df_cols(df_1, df_2, comb=False, perm=False, dist=False):
     """
     finds pearson coefficient between columns of two pandas dataframes
     
@@ -1104,6 +1104,9 @@ def correlate_df_cols(df_1, df_2, comb=False, perm=False):
     :param perm: bool, permute the cell order in df1 so as to destroy cell-to-cell comparision
                     True: permutes column headers with df1, null dist
                     False: keeps df1 column headers in natural order, preserves cell-to-cell comparisons (default)
+    :param dist: bool, changes pearson to Rogers-Tanimoto Disimilarity (RTD) for boolean dataframes
+                    True: takes measurements in RTd (the higher, the more dissmilar)
+                    False: keeps pearson as correlation (default)
     
     returns pandas dataframe of correlations
     """
@@ -1119,13 +1122,21 @@ def correlate_df_cols(df_1, df_2, comb=False, perm=False):
         df_1.columns=df_1_cols
     
     if comb:
-        cldeg_depBreast_corr = [['sample','cell','pear_coeff','p_val']]
+        if dist:
+            cldeg_depBreast_corr = [['sample','cell','r-t']]
+        else:
+            cldeg_depBreast_corr = [['sample','cell','pear_coeff','p_val']]
         completed = []
         for pair in itertools.product(cldeg.columns, dep_breast.columns):
             if (pair[0] != pair[1]) & (pair[::-1] not in completed):
-                corr = pearsonr(cldeg[pair[0]], dep_breast[pair[1]])
-                cldeg_depBreast_corr.append([pair[0], pair[1], corr[0], corr[1]])
+                if dist:
+                    corr = rogerstanimoto(cldeg[pair[0]], dep_breast[pair[1]])
+                    cldeg_depBreast_corr.append([pair[0], pair[1], corr])
+                else:
+                    corr = pearsonr(cldeg[pair[0]], dep_breast[pair[1]])
+                    cldeg_depBreast_corr.append([pair[0], pair[1], corr[0], corr[1]])
                 completed.append(pair)
+
     else:
         cldeg_depBreast_corr = [['cell','pear_coeff','p_val']]
         for cell in cldeg.columns:
