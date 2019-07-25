@@ -1107,6 +1107,10 @@ def taub_corr_df_cols(df_1, df_2, comb=False, perm=False):
     
     returns pandas dataframe of correlations
     """
+    if isinstance(df_1, str):
+        df_1 = pd.read_csv(df_1, index_col=0)
+    if isinstance(df_2, str):
+        df_2 = pd.read_csv(df_2, index_col=0)
     df_1.dropna(inplace=True)
     df_2.dropna(inplace=True)
     idx_1, idx_2 = df_1.index, df_2.index
